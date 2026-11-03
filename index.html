@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Budgy</title>
+<meta name="theme-color" content="#0a0e14">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Sora','system-ui','sans-serif']}}}}</script>
+<style>
+:root{--mint:94 234 212;--coral:251 113 133}
+html,body,#root{height:100%}
+body{margin:0;color:#e8edf5;font-family:Sora,system-ui,sans-serif;background:#0a0e14;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 40% at 90% 0%,rgba(94,234,212,.20),transparent 70%),radial-gradient(70% 45% at 0% 100%,rgba(167,102,255,.18),transparent 70%),#0a0e14}
+.glass{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border-radius:1.5rem}
+.hero{background:linear-gradient(135deg,rgba(94,234,212,.28),rgba(167,102,255,.22));border-color:rgba(255,255,255,.18)}
+.mu{color:#8e9bb0}
+.field{width:100%;border-radius:1rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);padding:.8rem 1rem;color:inherit;outline:none;font-size:16px}
+.field:focus{border-color:rgb(var(--mint));box-shadow:0 0 0 3px rgba(94,234,212,.2)}
+.field option{background:#141a24}
+.btn{border-radius:999px;padding:.7rem 1.1rem;font-weight:600;font-size:.875rem;transition:transform .15s,opacity .15s;background:rgba(255,255,255,.1)}
+.btn:active{transform:scale(.96)}.btn:disabled{opacity:.4}
+.btn-p{background:rgb(var(--mint));color:#06201c}
+.btn-d{background:rgba(251,113,133,.15);color:#fda4af}
+.sheet{animation:up .25s ease-out}@keyframes up{from{transform:translateY(40px);opacity:0}}
+.bar{height:6px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden}.bar>i{display:block;height:100%;border-radius:9px;background:rgb(var(--mint))}
+.safe-top{padding-top:max(env(safe-area-inset-top),16px)}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+button:focus-visible,a:focus-visible{outline:2px solid rgb(var(--mint));outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script type="module" src="./firebase.js"></script>
+<script type="text/babel" data-presets="react" src="./app.js"></script>
+</body>
+</html>
