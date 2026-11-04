@@ -1,10 +1,57 @@
 rules_version = '2';
+
+// Budgy Firestore rules (Phase 3).
+//
+// Data model used by the app:
+//   users/{userId}/budget/v2   ->  { t: <number, last change in ms>, json: <string, the whole budget> }
+//
+// Guarantees:
+//   * Only a signed-in user can touch data, and only under their own users/{userId}/ path.
+//   * Reads, writes and DELETES are all allowed for the owner, so the in-app "Delete account" button can wipe
+//     every record (it lists users/{uid}/budget and deletes each document before deleting the sign-in account).
+//   * Writes to the budget document must have exactly the shape the app saves, and stay under Firestore's size limit.
+//   * Everything outside users/{userId}/ is denied.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each signed-in user can read and write only documents under their own users/{uid} path.
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    function signedIn() {
+      return request.auth != null;
     }
-    // Everything else is denied by default.
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    // The exact shape firebase.js saves: { t, json }.
+    function validBudget() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['t', 'json'])
+        && d.keys().hasAll(['t', 'json'])
+        && d.t is number
+        && d.json is string
+        && d.json.size() < 800000;
+    }
+
+    // users/{userId} itself (the parent path). Lets the owner read or remove it if it ever exists.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // The budget collection: owner can read and delete; creates and updates must pass validBudget().
+    match /users/{userId}/budget/{docId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validBudget();
+      allow delete: if isOwner(userId);
+    }
+
+    // Any other collection under the user's own path (future features): owner only, full control.
+    // The budget collection is excluded from the write rule so it can never bypass validBudget().
+    match /users/{userId}/{coll}/{docId=**} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId) && coll != 'budget';
+    }
+
+    // Default deny for everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

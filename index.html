@@ -2,47 +2,189 @@
 <html lang="en" class="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Budgy</title>
-<meta name="theme-color" content="#0a0e14">
+<meta name="description" content="Personal budget tracker with wallets, payables, receivables, savings and smart allocation.">
+<meta name="theme-color" content="#09090b">
 <link rel="manifest" href="./manifest.json">
-<link rel="icon" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<meta name="apple-mobile-web-app-title" content="Budgy">
+
+<!-- Apply the saved light/dark mode before first paint so there is no flash. The Appearance Engine in core.js takes over once React starts. -->
+<script>
+try {
+  var u = JSON.parse(localStorage.getItem('budgy.ui') || '{}'), m = u.mode || 'dark', r = document.documentElement;
+  var light = m === 'light' || (m === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+  r.classList.remove('dark', 'light'); r.classList.add(light ? 'light' : 'dark');
+  if (u.bg) r.style.setProperty('--bg', u.bg);
+} catch (e) {}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Tailwind (Play CDN, pinned) -->
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-<script>tailwind.config={darkMode:'class',theme:{extend:{fontFamily:{sans:['Sora','system-ui','sans-serif']}}}}</script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Sora', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
+      // Every colour is a CSS variable holding an "r g b" triplet, so the Appearance Engine can retheme the whole app live.
+      colors: {
+        ac:   'rgb(var(--a) / <alpha-value>)',
+        onac: 'rgb(var(--on-a) / <alpha-value>)',
+        fg:   'rgb(var(--fg) / <alpha-value>)',
+        mu:   'rgb(var(--mu) / <alpha-value>)',
+        s1:   'rgb(var(--s1) / <alpha-value>)',
+        s2:   'rgb(var(--s2) / <alpha-value>)',
+        bd:   'rgb(var(--bd) / <alpha-value>)',
+        pos:  'rgb(var(--pos) / <alpha-value>)',
+        neg:  'rgb(var(--neg) / <alpha-value>)'
+      }
+    }
+  }
+};
+</script>
+
 <style>
-:root{--mint:94 234 212;--coral:251 113 133}
-html,body,#root{height:100%}
-body{margin:0;color:#e8edf5;font-family:Sora,system-ui,sans-serif;background:#0a0e14;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
-body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 40% at 90% 0%,rgba(94,234,212,.20),transparent 70%),radial-gradient(70% 45% at 0% 100%,rgba(167,102,255,.18),transparent 70%),#0a0e14}
-.glass{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border-radius:1.5rem}
-.hero{background:linear-gradient(135deg,rgba(94,234,212,.28),rgba(167,102,255,.22));border-color:rgba(255,255,255,.18)}
-.mu{color:#8e9bb0}
-.field{width:100%;border-radius:1rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);padding:.8rem 1rem;color:inherit;outline:none;font-size:16px}
-.field:focus{border-color:rgb(var(--mint));box-shadow:0 0 0 3px rgba(94,234,212,.2)}
-.field option{background:#141a24}
-.btn{border-radius:999px;padding:.7rem 1.1rem;font-weight:600;font-size:.875rem;transition:transform .15s,opacity .15s;background:rgba(255,255,255,.1)}
-.btn:active{transform:scale(.96)}.btn:disabled{opacity:.4}
-.btn-p{background:rgb(var(--mint));color:#06201c}
-.btn-d{background:rgba(251,113,133,.15);color:#fda4af}
-.sheet{animation:up .25s ease-out}@keyframes up{from{transform:translateY(40px);opacity:0}}
-.bar{height:6px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden}.bar>i{display:block;height:100%;border-radius:9px;background:rgb(var(--mint))}
-.safe-top{padding-top:max(env(safe-area-inset-top),16px)}
-@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
-button:focus-visible,a:focus-visible{outline:2px solid rgb(var(--mint));outline-offset:2px}
+/* ---------- Theme tokens (defaults = Classic). core.js overwrites these at runtime. ---------- */
+:root {
+  --bg: 9 9 11; --s1: 17 17 19; --s2: 26 26 29; --bd: 39 39 42;
+  --fg: 250 250 250; --mu: 161 161 170;
+  --a: 225 29 72; --on-a: 255 255 255;
+  --pos: 52 211 153; --neg: 251 113 133;
+  color-scheme: dark;
+}
+html.light {
+  --bg: 246 246 247; --s1: 255 255 255; --s2: 240 240 242; --bd: 228 228 231;
+  --fg: 24 24 27; --mu: 82 82 91;
+  --pos: 4 120 87; --neg: 220 38 38;
+  color-scheme: light;
+}
+
+html { -webkit-text-size-adjust: 100%; background: rgb(var(--bg)); }
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0; color: rgb(var(--fg)); font-family: Sora, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; overflow-x: hidden;
+}
+
+/* ---------- Liquid Glass ---------- */
+/* Aurora: soft, slowly drifting colour blobs that tint with the accent. The glass cards blur whatever is behind them. */
+.aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.aurora i { position: absolute; border-radius: 9999px; background: rgb(var(--a)); opacity: .34; filter: blur(80px); will-change: transform; animation: drift 26s ease-in-out infinite; }
+.aurora .b1 { width: 60vmax; height: 60vmax; top: -24vmax; right: -18vmax; }
+.aurora .b2 { width: 55vmax; height: 55vmax; bottom: -26vmax; left: -18vmax; filter: blur(90px) hue-rotate(70deg); opacity: .26; animation-delay: -9s; }
+.aurora .b3 { width: 38vmax; height: 38vmax; top: 38%; left: 42%; filter: blur(90px) hue-rotate(-55deg); opacity: .16; animation-delay: -16s; }
+html.light .aurora i { opacity: .30; }
+html.light .aurora .b2 { opacity: .22; }
+html.light .aurora .b3 { opacity: .14; }
+@keyframes drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(-4vmax,5vmax,0) scale(1.08); } }
+
+/* Translucent surface. The blur itself comes from Tailwind's backdrop-blur-md on each element. */
+.glass {
+  background: rgb(var(--s1) / .52);
+  border: 1px solid rgb(var(--fg) / .10);
+  border-radius: 1.25rem;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), inset 0 0 0 1px rgb(255 255 255 / .03), 0 12px 32px -14px rgb(0 0 0 / .55);
+}
+html.light .glass { background: rgb(var(--s1) / .62); box-shadow: inset 0 1px 0 rgb(255 255 255 / .9), 0 12px 32px -16px rgb(30 41 59 / .28); }
+.glass-strong { background: rgb(var(--s1) / .84); }
+html.light .glass-strong { background: rgb(var(--s1) / .90); }
+.glass-tile { background: rgb(var(--fg) / .05); border: 1px solid rgb(var(--fg) / .08); border-radius: 1rem; }
+
+/* ---------- Controls ---------- */
+.field {
+  width: 100%; border-radius: 1rem; padding: .78rem 1rem; color: inherit; outline: none; font-size: 16px;
+  background: rgb(var(--fg) / .06); border: 1px solid rgb(var(--fg) / .12); transition: border-color .15s, box-shadow .15s;
+}
+.field:focus { border-color: rgb(var(--a)); box-shadow: 0 0 0 3px rgb(var(--a) / .22); }
+.field::placeholder { color: rgb(var(--mu) / .7); }
+.field option { background: rgb(var(--s1)); color: rgb(var(--fg)); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem; border-radius: 999px; padding: .65rem 1.1rem;
+  font-weight: 600; font-size: .875rem; cursor: pointer; color: rgb(var(--fg));
+  background: rgb(var(--fg) / .08); border: 1px solid rgb(var(--fg) / .10); transition: transform .15s, opacity .15s, background .15s;
+}
+.btn:hover { background: rgb(var(--fg) / .13); }
+.btn:active { transform: scale(.96); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn-p { background: rgb(var(--a)); color: rgb(var(--on-a)); border-color: transparent; box-shadow: 0 8px 22px -10px rgb(var(--a) / .9); }
+.btn-p:hover { background: rgb(var(--a)); filter: brightness(1.08); }
+.btn-d { background: rgb(var(--neg) / .14); color: rgb(var(--neg)); border-color: rgb(var(--neg) / .25); }
+.btn-d:hover { background: rgb(var(--neg) / .22); }
+.btn-i { padding: .5rem; width: 2.25rem; height: 2.25rem; }
+button:focus-visible, a:focus-visible, .field:focus-visible { outline: 2px solid rgb(var(--a)); outline-offset: 2px; }
+
+.bar { height: .5rem; border-radius: 999px; background: rgb(var(--fg) / .10); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 999px; background: rgb(var(--a)); transition: width .7s cubic-bezier(.2,.8,.2,1); }
+.bar.gray > i { background: rgb(var(--fg) / .45); }
+.bar.lg { height: .75rem; }
+
+/* ---------- Motion ---------- */
+.rise { animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+.sheet { animation: sheet .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes sheet { from { opacity: 0; transform: translateY(36px) scale(.98); } }
+.fade { animation: fade .2s ease-out both; }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .aurora i, .rise, .sheet, .fade { animation: none !important; } .bar > i { transition: none; } }
+
+/* ---------- Misc ---------- */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--fg) / .18); border-radius: 9px; }
+input[type=color] { -webkit-appearance: none; appearance: none; padding: 0; border: 0; background: transparent; cursor: pointer; }
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: 1px solid rgb(var(--fg) / .2); border-radius: 999px; }
+#boot { min-height: 100dvh; display: grid; place-items: center; }
+#boot span { width: .8rem; height: .8rem; border-radius: 999px; background: rgb(var(--a)); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.8); opacity: .4; } }
+/* ---------- Phase 2 ---------- */
+/* Every text-like input is at least 16px so iOS never zooms in on focus. */
+input:not([type=range]):not([type=color]):not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px !important; }
+input[type=range] { width: 100%; height: 1.75rem; accent-color: rgb(var(--a)); background: transparent; }
+select.field { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, rgb(var(--mu)) 50%), linear-gradient(135deg, rgb(var(--mu)) 50%, transparent 50%); background-position: calc(100% - 20px) 55%, calc(100% - 14px) 55%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 2.2rem; }
+.chips { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; max-width: 100%; }
+.chips::-webkit-scrollbar { display: none; }
+.chips .btn { flex: none; padding: .4rem .9rem; font-size: .8rem; }
+main { max-width: 100%; }
+main > div, main section { min-width: 0; }
+.glass, .glass-tile { min-width: 0; }
+@media (min-width: 768px) and (max-width: 1100px) { main { padding-left: 1.5rem; padding-right: 1.5rem; } }
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<div id="root"><div id="boot"><span></span></div></div>
+<noscript>Budgy needs JavaScript to run.</noscript>
+
+<!-- React 18 + ReactDOM (pinned UMD builds) -->
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<!-- Recharts 2.x UMD needs prop-types and react-is loaded first -->
+<script src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-is@18.3.1/umd/react-is.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js"></script>
+<!-- Babel compiles the JSX files below right in the browser (no build step) -->
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+
+<!-- Firebase v10 modular SDK, imported from Google's CDN inside firebase.js. It sets window.fb and fires "fb-ready". -->
 <script type="module" src="./firebase.js"></script>
+
+<!-- App code. These run in order and share one global scope. -->
+<script type="text/babel" data-presets="react" src="./core.js"></script>
+<script type="text/babel" data-presets="react" src="./ui.js"></script>
+<script type="text/babel" data-presets="react" src="./pages.js"></script>
+<script type="text/babel" data-presets="react" src="./p2.js"></script>
+<script type="text/babel" data-presets="react" src="./p3.js"></script>
 <script type="text/babel" data-presets="react" src="./app.js"></script>
 </body>
 </html>
