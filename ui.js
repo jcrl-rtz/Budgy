@@ -330,3 +330,4 @@ function Auth() {
     </div>
   )
 }
+window.Auth = Auth // v7 spinner fix: explicitly global, so every lookup finds it whatever the load order

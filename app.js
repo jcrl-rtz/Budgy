@@ -160,8 +160,18 @@ function parts() {
 }
 
 function App() {
-  const { S, c, ready, user, guest, sync, addTx, delTx } = useApp()
+  const { S, c, ready: providerReady, user, guest, sync, addTx, delTx } = useApp()
   const P = parts() // every component looked up defensively; a missing one renders a fallback instead of throwing
+  // v7 spinner fix: `loading` can never stay true. Provider sets ready; if it somehow never does, this forces loading off after 3s.
+  const [forced, setForced] = useState(false)
+  const loading = !providerReady && !forced
+  const ready = !loading
+  useEffect(() => {
+    console.log('App init status:', { authExists: typeof Auth !== 'undefined', loadingState: loading })
+    if (!loading) return
+    const t = setTimeout(() => { console.warn('Budgy: still loading after 3s, forcing loading=false'); setForced(true) }, 3000)
+    return () => clearTimeout(t)
+  }, [loading])
   const [view, setView] = useState('home'), [sheet, setSheet] = useState(null), [toast, setToast] = useState(null)
   const openSheet = (s) => setSheet(s), closeSheet = () => setSheet(null)
   const [dir, setDir] = useState(0), swipe = useRef(null)
@@ -314,8 +324,9 @@ const mount = () => {
   ReactDOM.createRoot(document.getElementById('root')).render(<Boundary>{tree}</Boundary>)
   window.__budgyBooted = true // the loader guard in index.html stops watching once this is set
 }
+console.log('App init status (mount):', { authExists: typeof Auth !== 'undefined', fbReady: !!window.fb, loadingState: !window.__budgyBooted })
 if (window.fb) mount()
-else { addEventListener('fb-ready', mount, { once: true }); setTimeout(mount, 10000) } // if Firebase never loads, start in this-device-only mode
+else { addEventListener('fb-ready', mount, { once: true }); setTimeout(mount, 3000) } // if Firebase never loads, start in this-device-only mode after 3s
 
 // Service worker + automatic update checks (see p3.js). Registers now if the page has already loaded.
 const safeSwInit = () => { try { if (typeof swInit === 'function') swInit() } catch (e) {} }

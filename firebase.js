@@ -27,7 +27,9 @@ window.errMsg = (e) => (e && e.code in M ? M[e.code] : 'Something went wrong. Pl
 const off = () => { throw Object.assign(new Error('off'), { code: 'app/not-configured' }) }
 let fb = { enabled: false, onAuth: () => () => {}, signIn: off, signUp: off, google: off, reset: off, signOut: off, watch: () => () => {}, save: off, setName: off, changePassword: off, deleteAccount: off }
 try {
-  const [A, Au, F] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')])
+  // v7 spinner fix: if the CDN is slow, blocked or offline, give up after 6s and run in this-device-only mode instead of hanging forever.
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('firebase import timeout')), ms))])
+  const [A, Au, F] = await withTimeout(Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]), 6000)
   const app = A.initializeApp(cfg), auth = Au.getAuth(app)
   let db
   try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }) } catch { db = F.getFirestore(app) }

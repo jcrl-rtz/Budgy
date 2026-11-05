@@ -6,7 +6,7 @@
 <title>Budgy</title>
 <meta name="description" content="Personal budget tracker with wallets, payables, receivables, savings and smart allocation.">
 <meta name="theme-color" content="#f9f6f3">
-<link rel="manifest" href="./manifest.json?v=v7-stable-gh-1">
+<link rel="manifest" href="./manifest.json?v=v7-spinner-fix-1">
 <link rel="icon" type="image/png" href="./icons/budgy-icon-192-v7.png?v=7">
 <!-- iOS keeps the first home-screen icon it sees. New file name + ?v=7 forces a fresh download; remove and re-add the app to the Home Screen once to pick it up. -->
 <link rel="apple-touch-icon" sizes="180x180" href="./icons/budgy-apple-touch-v7.png?v=7">
@@ -473,13 +473,13 @@ html.light .auth-halo::before { background: radial-gradient(closest-side, rgb(14
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
 
 <!-- Firebase v10 modular SDK, imported from Google's CDN inside firebase.js. It sets window.fb and fires "fb-ready". -->
-<script type="module" src="./firebase.js?v=v7-stable-gh-1"></script>
+<script type="module" src="./firebase.js?v=v7-spinner-fix-1"></script>
 
 <!-- v7 GitHub-stable loader guard. Babel runs the app files in the browser, so a stale cache or one failed download can leave a component undefined.
      This watches for the app to start. If it has not, it clears the service-worker caches (never your budget data) and reloads ONCE, then shows a Reload card. -->
 <script>
 (function () {
-  var REV = 'v7-stable-gh-1', need = ['useApp', 'Provider', 'Auth', 'Home', 'Wallets', 'Pending', 'Allocate', 'GoalsPage', 'Settings', 'App'];
+  var REV = 'v7-spinner-fix-1', need = ['useApp', 'Provider', 'Auth', 'Home', 'Wallets', 'Pending', 'Allocate', 'GoalsPage', 'Settings', 'App'];
   window.budgyRecover = function () {
     var done = function () { try { location.replace(location.pathname + '?r=' + Date.now()); } catch (e) { location.reload(); } }, jobs = [];
     try {
@@ -506,14 +506,14 @@ html.light .auth-halo::before { background: radial-gradient(closest-side, rgb(14
 </script>
 
 <!-- App code. These run in order and share one global scope. -->
-<script type="text/babel" data-presets="react" src="./core.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./ui.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./pages.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./p2.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./p3.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./io.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./receipt.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./shortcuts.js?v=v7-stable-gh-1"></script>
-<script type="text/babel" data-presets="react" src="./app.js?v=v7-stable-gh-1"></script>
+<script type="text/babel" data-presets="react" src="./core.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./ui.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./pages.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./p2.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./p3.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./io.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./receipt.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./shortcuts.js?v=v7-spinner-fix-1"></script>
+<script type="text/babel" data-presets="react" src="./app.js?v=v7-spinner-fix-1"></script>
 </body>
 </html>

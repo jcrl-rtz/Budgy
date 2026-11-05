@@ -315,9 +315,14 @@ function Provider({ children }) {
     R.skip = true; R.t = 0; R.sent = 0; R.ready = false; R.S = ns; setS(ns); ls.del(TK); ls.set(KEY, JSON.stringify(ns))
   }
 
-  useEffect(() => { // auth state
-    if (!fb.enabled) { setReady(true); return }
-    return fb.onAuth((u) => { if (u) { ls.del(GK); setGuestState(false) } setUser(u); setReady(true) })
+  useEffect(() => { // auth state. setReady(true) is guaranteed: auth callback, no-Firebase path, thrown error, or the 3s fallback below.
+    let off = () => {}, dead = false
+    const fallback = setTimeout(() => { if (!dead) { console.warn('Budgy: auth did not answer in 3s, showing the app anyway'); setReady(true) } }, 3000)
+    try {
+      if (!fb.enabled) setReady(true)
+      else off = fb.onAuth((u) => { if (u) { ls.del(GK); setGuestState(false) } setUser(u); setReady(true) }) || off
+    } catch (e) { console.error('Budgy: auth init failed', e); setReady(true) }
+    return () => { dead = true; clearTimeout(fallback); try { off() } catch (e) {} }
   }, [])
 
   useEffect(() => { // every change: cache locally right away, then debounce a save to Firestore
