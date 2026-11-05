@@ -1,3 +1,13 @@
+# Budgy stable final: "Pending is not defined"
+
+- Real cause: `signed` was declared with `const` in both `core.js` (the 2-decimal number check) and `p2.js` (the +/- money formatter added with the Due Date Summary). Each `<script type="text/babel">` shares one global scope, so when `p2.js` loaded the browser threw "Identifier 'signed' has already been declared" and discarded the WHOLE file. That removed `Pending`, `Allocate`, `GoalsPage` and every other p2.js component, so `App` crashed on `<Pending />`.
+- Fix: the p2.js formatter is now `signedMoney` (2 places, both in p2.js). `core.js` `signed` is unchanged, so `ui.js` keeps working.
+- Audit done on this build: all 9 files compile; no top-level name is declared twice across files; no undefined names; a simulated load of the files in index.html order runs every file and finds `Pending`, `Home`, `Wallets`, `Allocate`, `GoalsPage`, `UpdatePrompt`, `useUpdate`, `swOk`, `SW`, `Provider` and `App`. Script order in index.html is already correct (core, ui, pages, p2, p3, io, receipt, shortcuts, app).
+- `sw.js` VERSION is `budgy-v8-final-4`, so installed copies show Update Now.
+- Files changed: p2.js, sw.js, README.md. (core.js / p3.js keep the previous swOk fix.)
+
+---
+
 # Budgy v8 Final fix 2: "Cannot access 'swOk' before initialization"
 
 - Real cause: if p3.js throws before its top-level `const` lines run, every `const` in it stays in the temporal dead zone while its function declarations (`useUpdate`) still exist, so the next render crashed. Moving one const at a time (SW, then swOk) only moved the crash.

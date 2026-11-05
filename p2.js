@@ -388,7 +388,7 @@ const dueLabel = (d) => {
   const dt = new Date(d + 'T00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: yr ? 'numeric' : undefined })
   return n === 0 ? 'Due Today' : n === 1 ? 'Due Tomorrow' : n < 0 ? 'Overdue · ' + dt : 'Due ' + dt
 }
-const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + php(Math.abs(n))
+const signedMoney = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + php(Math.abs(n))
 
 function DueItem({ d, openSheet }) {
   const { delDebt } = useApp(), pay = d.kind === 'payable', r = Math.max(0, rem(d))
@@ -441,7 +441,7 @@ function DueSummary({ openSheet }) {
                   </span>
                   <span className="flex items-center gap-2 shrink-0 text-right">
                     <span>
-                      {both ? <><span className="block text-sm font-semibold tabular-nums">Net {signed(net)}</span><span className="block text-[11px] text-mu tabular-nums">Pay {php(g.pay)} · Get {php(g.rec)}</span></>
+                      {both ? <><span className="block text-sm font-semibold tabular-nums">Net {signedMoney(net)}</span><span className="block text-[11px] text-mu tabular-nums">Pay {php(g.pay)} · Get {php(g.rec)}</span></>
                         : g.np > 0 ? <><span className="block text-[11px] text-mu">Total Due</span><span className="block text-sm font-semibold tabular-nums text-neg">{php(g.pay)}</span></>
                         : <><span className="block text-[11px] text-mu">Total to Receive</span><span className="block text-sm font-semibold tabular-nums text-pos">{php(g.rec)}</span></>}
                     </span>
