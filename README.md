@@ -1,3 +1,22 @@
+# Budgy v8 Final fix 2: "Cannot access 'swOk' before initialization"
+
+- Real cause: if p3.js throws before its top-level `const` lines run, every `const` in it stays in the temporal dead zone while its function declarations (`useUpdate`) still exist, so the next render crashed. Moving one const at a time (SW, then swOk) only moved the crash.
+- `swOk` and `swNotify` are now hoisted `function` declarations at the top of `core.js` (next to `var SW`), so they exist no matter what runs or fails later. They were removed from p3.js.
+- The icon registration at the top of p3.js is wrapped in try/catch so a failure there can no longer stop the rest of the file.
+- `sw.js` VERSION is `budgy-v8-final-3`, so installed copies show Update Now.
+- Files changed: core.js, p3.js, sw.js, README.md.
+
+---
+
+# Budgy v8 Final fix: "Cannot access 'SW' before initialization"
+
+- The shared service-worker state `SW` is now created first, in `core.js` (the first file loaded), as `var SW` on `window.__budgySW`. A `var` has no temporal dead zone, so no file can hit this error whatever order or timing the scripts run in. `p3.js` re-uses the same object.
+- `useUpdate`, `UpdatePrompt`, `swNotify`, `swInit`, `applyUpdate` and `checkUpdate` (p3.js) check `typeof SW !== 'undefined' && SW` before touching it. `app.js` calls `swInit` through a guarded wrapper.
+- `sw.js` `VERSION` is `budgy-v8-final-2`.
+- Files changed: core.js, p3.js, app.js, sw.js, README.md.
+
+---
+
 # Budgy v8 Final (Phase 6): Due Date Summary
 
 ## What changed

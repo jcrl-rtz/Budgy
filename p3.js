@@ -4,7 +4,7 @@
    password change, account deletion and the onboarding guide.
    Loaded after p2.js and before app.js. Shares the global scope.
    ===================================================================== */
-Object.assign(IC, {
+try { Object.assign(IC, {
   cloud: ['M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z'],
   cloudoff: ['m2 2 20 20', 'M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193', 'M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07'],
   camera: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z', 'M15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
@@ -16,14 +16,14 @@ Object.assign(IC, {
   left: ['m15 18-6-6 6-6'],
   info: ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0', 'M12 16v-4', 'M12 8h.01'],
   book: ['M4 19.5A2.5 2.5 0 0 1 6.5 17H20', 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z']
-})
+}) } catch (e) { console.error('p3 icons', e) }
 
 /* =====================================================================
    PWA AUTO-UPDATE
    One small shared object tracks the service worker so any component can react to "a new version is waiting".
    ===================================================================== */
-const SW = { reg: null, waiting: null, listeners: new Set(), updating: false, hadController: false }
-const swNotify = () => SW.listeners.forEach((f) => f(SW.waiting))
+// SW, swOk and swNotify are created first in core.js (var / function declarations, so no temporal dead zone). Re-declared here only as a safety net.
+var SW = window.__budgySW = window.__budgySW || { reg: null, waiting: null, listeners: new Set(), updating: false, hadController: false }
 
 // Watch a registration: remember a worker that has finished installing while an older one still controls the page.
 function swWatch(reg) {
@@ -38,7 +38,7 @@ function swWatch(reg) {
 
 // Called once from app.js. Registers sw.js and keeps asking the browser whether a newer sw.js exists while the app is open.
 function swInit() {
-  if (!('serviceWorker' in navigator) || SW.reg) return
+  if (!swOk() || !('serviceWorker' in navigator) || SW.reg) return
   SW.hadController = !!navigator.serviceWorker.controller
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     // First-ever install also fires this (clients.claim). Only reload when we are switching from an older version.
@@ -58,6 +58,7 @@ function swInit() {
 
 // "Update Now": tell the waiting worker to take over, then reload (controllerchange does the reload; the timer is a safety net).
 function applyUpdate() {
+  if (!swOk()) return location.reload()
   SW.updating = true
   const w = SW.waiting || (SW.reg && SW.reg.waiting)
   if (w) { w.postMessage({ type: 'SKIP_WAITING' }); setTimeout(() => location.reload(), 4000) } else location.reload()
@@ -65,7 +66,7 @@ function applyUpdate() {
 
 // Manual check from Settings. Resolves 'available' | 'latest' | 'error' | 'unsupported'.
 async function checkUpdate() {
-  if (!SW.reg) return 'unsupported'
+  if (!swOk() || !SW.reg) return 'unsupported'
   try { await SW.reg.update() } catch (e) { return 'error' }
   const inst = SW.reg.installing
   if (inst) await new Promise((res) => { const f = () => ['installed', 'activated', 'redundant'].includes(inst.state) && res(); inst.addEventListener('statechange', f); f(); setTimeout(res, 15000) })
@@ -83,15 +84,19 @@ function swVersion() {
 }
 
 function useUpdate() {
-  const [w, setW] = useState(SW.waiting)
-  useEffect(() => { SW.listeners.add(setW); setW(SW.waiting); return () => { SW.listeners.delete(setW) } }, [])
+  const [w, setW] = useState(() => (swOk() ? SW.waiting || null : null))
+  useEffect(() => {
+    if (!swOk() || !SW.listeners) return
+    SW.listeners.add(setW); setW(SW.waiting || null)
+    return () => { if (swOk() && SW.listeners) SW.listeners.delete(setW) }
+  }, [])
   return w
 }
 
 // Floating prompt shown whenever a new version is waiting.
 function UpdatePrompt() {
   const w = useUpdate(), [hide, setHide] = useState(false), [busy, setBusy] = useState(false)
-  if (!w || hide) return null
+  if (!swOk() || !w || hide) return null
   return (
     <div className="fixed left-1/2 -translate-x-1/2 z-[60] w-[min(94vw,26rem)] fade" style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }} role="status" aria-live="polite">
       <div className="glass glass-strong !rounded-2xl flex items-center gap-3 p-3 pl-4" style={{ borderColor: 'rgb(var(--a) / .4)' }}>

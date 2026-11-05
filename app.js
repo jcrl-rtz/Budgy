@@ -228,4 +228,5 @@ if (window.fb) mount()
 else { addEventListener('fb-ready', mount, { once: true }); setTimeout(mount, 10000) } // if Firebase never loads, start in this-device-only mode
 
 // Service worker + automatic update checks (see p3.js). Registers now if the page has already loaded.
-if (document.readyState === 'complete') swInit(); else addEventListener('load', swInit)
+const safeSwInit = () => { try { if (typeof swInit === 'function') swInit() } catch (e) {} }
+if (document.readyState === 'complete') safeSwInit(); else addEventListener('load', safeSwInit)

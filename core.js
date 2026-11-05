@@ -5,6 +5,15 @@
    ===================================================================== */
 const { useState, useEffect, useMemo, useRef, createContext, useContext } = React
 
+/* ---------- Service-worker state (v8 final fix 2) ----------
+   Declared FIRST (core.js is the first file loaded) and with `var` on window, so it can never be in a temporal dead zone,
+   whatever order or timing the other files run in. p3.js re-uses this same object. */
+var SW = window.__budgySW = window.__budgySW || { reg: null, waiting: null, listeners: new Set(), updating: false, hadController: false }
+// Hoisted function declarations (NOT const): a function declaration is created when the script starts, so it can never sit in a temporal dead zone,
+// even if a later file throws before reaching its own top-level code.
+function swOk() { return typeof SW !== 'undefined' && !!SW }
+function swNotify() { if (swOk() && SW.listeners) SW.listeners.forEach((f) => { try { f(SW.waiting) } catch (e) {} }) }
+
 /* ---------- Safe access to window.fb (firebase.js) and localStorage ---------- */
 const FB_OFF = { enabled: false, onAuth: () => () => {}, signIn: () => Promise.reject(), signUp: () => Promise.reject(), google: () => Promise.reject(), reset: () => Promise.reject(), signOut: () => Promise.resolve(), watch: () => () => {}, save: () => Promise.reject(), setName: () => Promise.reject(), changePassword: () => Promise.reject(), deleteAccount: () => Promise.reject() }
 const fb = new Proxy({}, { get: (_, k) => (window.fb || FB_OFF)[k] })
