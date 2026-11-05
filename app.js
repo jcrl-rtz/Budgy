@@ -30,8 +30,8 @@ function FitTitle({ text, max = 30, min = 18, lines = 2 }) {
 }
 
 function App() {
-  const { S, ready, user, guest, sync } = useApp()
-  const [view, setView] = useState('home'), [sheet, setSheet] = useState(null)
+  const { S, c, ready, user, guest, sync, addTx, delTx } = useApp()
+  const [view, setView] = useState('home'), [sheet, setSheet] = useState(null), [toast, setToast] = useState(null)
   const openSheet = (s) => setSheet(s), closeSheet = () => setSheet(null)
   const goto = (v) => { setView(v); window.scrollTo({ top: 0 }) }
 
@@ -46,6 +46,18 @@ function App() {
   // Links are captured at load time in shortcuts.js, so signing in first does not lose them.
   useEffect(() => {
     if (!ready || (!user && !guest) || (user && sync !== 'synced' && sync !== 'error')) return
+    // v6: a deep link (?action=addExpense&amount=250) is saved straight away. A toast confirms it (with Undo) or says why nothing was saved.
+    const dl = takeDeepLink()
+    if (dl) {
+      const r = buildDeepTx(S, c, dl)
+      setView('home'); setSheet(null)
+      if (!r.ok) setToast({ ok: false, msg: r.error })
+      else {
+        const id = addTx(r.tx), sign = r.tx.type === 'income' ? '+' : '−'
+        setToast({ ok: true, msg: (r.tx.type === 'income' ? 'Income added ' : 'Expense added ') + sign + php(r.tx.amount), sub: r.tx.category + ' · ' + r.walletName + (r.tx.note ? ' · ' + r.tx.note : ''), undo: () => delTx(id) })
+      }
+      return
+    }
     const sh = takeQuickAdd(S)
     if (sh) { setView(sh.k === 'debt' ? 'pending' : 'home'); setSheet(sh) }
   }, [ready, user, guest, sync])
@@ -134,6 +146,8 @@ function App() {
       {sheet && <P3Sheets sheet={sheet} onClose={closeSheet} openSheet={openSheet} />}
       {sheet && sheet.k === 'data' && <DataSheet onClose={closeSheet} />}
       {sheet && sheet.k === 'shortcuts' && <ShortcutsSheet onClose={closeSheet} />}
+      {sheet && sheet.k === 'backtap' && <BackTapSheet onClose={closeSheet} />}
+      <Toast t={toast} onClose={() => setToast(null)} />
       {sheet && sheet.k === 'delete' && <DeleteWalletSheet item={sheet.item} onClose={closeSheet} />}
       {guide && <Onboarding onClose={closeSheet} />}
     </div>

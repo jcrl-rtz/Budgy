@@ -175,19 +175,20 @@ function NetWorthCard() {
         </div>
       </div>
 
-      <Glass i={1} className="p-4 sm:p-5">
+      <Glass i={1} className="p-3.5 sm:p-4">
         <div className="flex items-baseline justify-between gap-3">
-          <div className="font-semibold">Statement</div>
-          <div className="text-xs text-mu">Cash + receivables − payables</div>
+          <div className="font-semibold text-[15px]">Statement</div>
+          <div className="text-[11px] text-mu truncate">Cash + receivables − payables</div>
         </div>
-        <div className="grid grid-cols-1 gap-2.5 mt-3">
-          <Tile l="Spendable" v={mask(c.spendable)} tone={c.spendable < 0 ? 'text-neg' : ''} />
+        <div className="flex items-baseline justify-between gap-3 mt-1.5">
+          <span className="text-xs text-mu">Spendable</span>
+          <span className={'text-xl font-semibold tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}>{mask(c.spendable)}</span>
         </div>
-        <div className="mt-4">
+        <div className="mt-2.5">
           <div className="nc-bar" role="img" aria-label="Share of cash, receivables and payables">
             {parts.map(([n, v, col]) => <i key={n} style={{ width: (v / total) * 100 + '%', background: col }} />)}
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-mu">
+          <div className="flex flex-wrap gap-x-3.5 gap-y-0.5 mt-1.5 text-[11px] text-mu">
             {parts.map(([n, v, col]) => <span key={n} className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full inline-block" style={{ background: col }} />{n} {Math.round((v / total) * 100)}%</span>)}
           </div>
         </div>
@@ -198,29 +199,26 @@ function NetWorthCard() {
 }
 
 /* ---------- Home ---------- */
-// v5 Phase 1 layout: the Net Worth credit card, one slim "this month" card, three compact quick actions, then up to five sections in a
-// two-column grid on wide screens. A section with no data (no spending, no goals, no activity, or a brand-new empty budget) is not rendered
-// at all, so there are no empty boxes. When the visible sections are an odd number, the last one stretches across both columns.
+// v6 compact layout: the Net Worth card + Statement, ONE overview card (this month + funds + outlook), three quick-action pills,
+// then small cards (top spending, goals) side by side and a four-row activity list. Sections with no data are not rendered.
 function Home({ goto, openSheet }) {
   const { S, c, ui, loadSample } = useApp()
   const t0 = off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w]))
   const cats = Object.entries(c.cat).sort((a, b) => b[1] - a[1])
-  const mx = Math.max(c.liquid, c.projected, 1)
   const empty = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.every((w) => !+w.balance)
   const entries = [
     ...S.tx.filter((x) => x.date <= t0).map((x) => ({ id: x.id, type: x.type, title: x.note || x.category, sub: x.category + ' · ' + ((W[x.wallet] || {}).name || 'Removed') + (x.type === 'transfer' ? ' → ' + ((W[x.to] || {}).name || '?') : ''), amount: x.amount, date: x.date })),
     ...S.debts.flatMap((d) => (d.payments || []).map((p) => ({ id: p.id, type: d.kind === 'payable' ? 'expense' : 'income', title: (d.kind === 'payable' ? 'Paid · ' : 'Received · ') + d.party, sub: d.cat + ' · ' + ((W[p.wallet] || {}).name || 'Removed'), amount: p.amount, date: p.date })))
   ].sort((a, b) => b.date.localeCompare(a.date))
-  const pal = palette(ui.accent, cats.length)
-  const donut = cats.map(([k, v], i) => ({ name: k, value: v, color: pal[i % pal.length] }))
+  const pal = palette(ui.accent, Math.max(cats.length, 1))
   const goalPct = (c.saved / Math.max(c.target, 1)) * 100
   const actions = [['Expense', 'down', 'expense'], ['Income', 'up', 'income'], ['Transfer', 'swap', 'transfer']]
-  // What has data to show. Anything false is left out of the page entirely.
-  const showFunds = !empty, showProj = !empty
   const showCats = cats.length > 0, showGoals = S.goals.length > 0, showRecent = entries.length > 0
+  const topCats = cats.slice(0, 5), catSum = Math.max(topCats.reduce((a, [, v]) => a + v, 0), 1)
+  const sgn = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + php(Math.abs(v))
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-3">
       {empty && (
         <Glass className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4" style={{ borderColor: 'rgb(var(--a) / .35)' }}>
           <span className="hidden sm:grid place-items-center w-11 h-11 rounded-2xl bg-ac/15 text-ac shrink-0"><Ic n="sparkle" s={20} /></span>
@@ -229,76 +227,75 @@ function Home({ goto, openSheet }) {
         </Glass>
       )}
 
-      {/* Net Worth credit card + statement */}
+      {/* Net Worth credit card + compact statement */}
       <NetWorthCard />
 
-      {/* This month, in one slim row */}
-      <Glass i={1} className="p-3.5 sm:p-4">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0"><div className="text-xs text-mu">Spent in {c.monthName}</div><div className="text-xl sm:text-2xl font-semibold tracking-tight tabular-nums text-neg mt-0.5"><Num v={c.spent} /></div></div>
-          <div className="text-right text-xs text-mu shrink-0"><div><b className="text-fg font-semibold">{c.left === 0 ? 'Last day' : c.left + ' day' + (c.left === 1 ? '' : 's') + ' left'}</b></div><div className="mt-0.5 tabular-nums">forecast {php(c.fc)}</div></div>
-        </div>
-        <div className="mt-2.5"><Bar pct={c.monthPct} /><div className="flex justify-between text-[10px] text-mu mt-1"><span>Day {c.day}</span><span>of {c.dim}</span></div></div>
-      </Glass>
-
-      {/* Quick actions: compact pills, icon beside label */}
-      <div className="grid grid-cols-3 gap-2.5">
-        {actions.map(([l, ic, kind]) => <button key={kind} className="glass !rounded-2xl py-2.5 px-2 flex items-center justify-center gap-2 text-sm font-medium transition-transform duration-200 active:scale-95" onClick={() => openSheet({ k: 'tx', kind })}><span className="grid place-items-center w-8 h-8 rounded-full bg-ac/15 text-ac shrink-0"><Ic n={ic} s={16} /></span><span className="truncate">{l}</span></button>)}
+      {/* Quick actions: always three across, never truncated */}
+      <div className="grid grid-cols-3 gap-2">
+        {actions.map(([l, ic, kind]) => (
+          <button key={kind} className="glass qa transition-transform duration-200 active:scale-95" style={{ borderRadius: '1.1rem' }} onClick={() => openSheet({ k: 'tx', kind })} aria-label={'Add ' + l.toLowerCase()}>
+            <span className="qa-i"><Ic n={ic} s={14} /></span><span>{l}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Sections: only those that have data */}
-      {(showFunds || showProj || showCats || showGoals || showRecent) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start lg:[&>*:last-child:nth-child(odd)]:col-span-2">
-          {showFunds && (
-            <Fold open i={2} title="Allocated funds" right={<span className="tabular-nums">{php(c.spendable)} spendable</span>}>
-              <div className="grid grid-cols-3 gap-2"><Tile l="Liquid cash" v={php(c.liquid)} /><Tile l="Allocated" v={php(c.allocated)} tone="text-ac" /><Tile l="Spendable" v={php(c.spendable)} tone={c.spendable < 0 ? 'text-neg' : ''} /></div>
-              <div className="mt-3"><Bar lg pct={(c.allocated / Math.max(c.liquid, 1)) * 100} /></div>
-              <p className="text-xs text-mu mt-2">{php(c.allocD)} reserved for payables · {php(c.saved)} in savings goals. Allocated money is locked from spending.{c.spendable < 0 ? ' Allocations currently exceed your cash.' : ''}</p>
-              <button className="btn mt-3 !py-1.5 !px-3 !text-xs" onClick={() => goto('plan')}>Manage allocation</button>
-            </Fold>
-          )}
-
-          {showProj && (
-            <Fold open i={3} title="End-of-month projection" right={<span className={'tabular-nums ' + (c.projected < 0 ? 'text-neg' : '')}>{php(c.projected)}</span>}>
-              <div className="space-y-3.5">
-                <div><div className="flex justify-between text-sm mb-1.5"><span className="text-mu">Current balance</span><span className="tabular-nums">{php(c.liquid)}</span></div><Bar lg gray pct={(c.liquid / mx) * 100} /></div>
-                <div><div className="flex justify-between text-sm mb-1.5"><span className="text-mu">Projected balance</span><span className={'font-semibold tabular-nums ' + (c.projected < 0 ? 'text-neg' : '')}>{php(c.projected)}</span></div><Bar lg pct={(c.projected / mx) * 100} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-3.5">
-                {[['Pending net', c.pend], ['Receivables due', c.dRec], ['Payables due', -c.dPay], ['Forecast expenses', -c.fc]].map(([a, b]) => <Tile key={a} l={a} v={(b > 0 ? '+' : b < 0 ? '−' : '') + php(Math.abs(b))} tone={b < 0 ? 'text-neg' : b > 0 ? 'text-pos' : ''} />)}
-              </div>
-            </Fold>
-          )}
-
-          {showCats && (
-            <Fold open i={4} title="Spending by category" right={<span className="tabular-nums">{php(c.spent)}</span>}>
-              <Donut data={donut} size={150} center={php(c.spent)} sub={'this ' + c.monthName.slice(0, 3)} />
-              <div className="space-y-2 mt-2.5">{cats.slice(0, 4).map(([k, v], i) => <div key={k}><div className="flex justify-between text-xs mb-1"><span className="flex items-center gap-2 text-mu"><i className="w-2 h-2 rounded-full inline-block" style={{ background: pal[i % pal.length] }} />{k}</span><span className="text-neg tabular-nums">{php(v)}</span></div><Bar pct={(v / cats[0][1]) * 100} /></div>)}</div>
-              {cats.length > 4 && <p className="text-[11px] text-mu mt-2">+ {cats.length - 4} more {cats.length - 4 === 1 ? "category" : "categories"}</p>}
-            </Fold>
-          )}
-
-          {showGoals && (
-            <Fold open i={5} title="Savings goals" right={<span>{pct1(goalPct) + ' overall'}</span>}>
-              <div className="space-y-3.5">{S.goals.map((g) => <div key={g.id}><div className="flex justify-between text-sm mb-1.5 gap-2"><span className="truncate">{g.name}</span><span className="text-mu text-xs whitespace-nowrap tabular-nums">{php(g.saved)} / {php(g.target)}</span></div><Bar pct={(g.saved / g.target) * 100} /></div>)}</div>
-              <button className="btn mt-3.5 !py-1.5 !px-3 !text-xs" onClick={() => goto('goals')}>Open goals</button>
-            </Fold>
-          )}
-
-          {showRecent && (
-            <div className="lg:col-span-2">
-              <Fold open i={6} title="Recent activity" right={<span>{Math.min(5, entries.length) + ' latest'}</span>}>
-                {entries.slice(0, 5).map((x, i) => (
-                  <div key={x.id} className={'flex items-center gap-3 py-2 ' + (i ? 'border-t border-fg/10' : '')}>
-                    <span className={'grid place-items-center w-9 h-9 rounded-full shrink-0 ' + (x.type === 'income' ? 'bg-pos/15 text-pos' : x.type === 'expense' ? 'bg-neg/15 text-neg' : 'bg-fg/10 text-mu')}><Ic n={x.type === 'income' ? 'up' : x.type === 'expense' ? 'down' : 'swap'} s={16} /></span>
-                    <div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{x.title}</div><div className="text-xs text-mu truncate">{x.sub} · {fd(x.date)}</div></div>
-                    <div className={'text-sm font-semibold whitespace-nowrap tabular-nums text-right ' + (x.type === 'income' ? 'text-pos' : x.type === 'expense' ? 'text-neg' : '')}>{x.type === 'income' ? '+' : x.type === 'expense' ? '−' : ''}{php(x.amount)}</div>
-                  </div>
-                ))}
-              </Fold>
+      {/* One overview card: this month + funds + outlook */}
+      <Glass i={2} className="p-3.5 sm:p-4">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0"><div className="text-[11px] text-mu">Spent in {c.monthName}</div><div className="text-xl font-semibold tracking-tight tabular-nums text-neg"><Num v={c.spent} /></div></div>
+          <div className="text-right text-[11px] text-mu shrink-0"><div><b className="text-fg font-semibold">{c.left === 0 ? 'Last day' : c.left + ' day' + (c.left === 1 ? '' : 's') + ' left'}</b></div><div className="mt-0.5 tabular-nums">forecast {php(c.fc)}</div></div>
+        </div>
+        <div className="mt-2"><Bar pct={c.monthPct} /></div>
+        {!empty && (
+          <>
+            <div className="ov mt-3">
+              <div className="ov-c"><div className="ov-l">Liquid cash</div><div className="ov-v">{php(c.liquid)}</div></div>
+              <div className="ov-c"><div className="ov-l">Allocated</div><div className="ov-v text-ac">{php(c.allocated)}</div></div>
+              <div className="ov-c"><div className="ov-l">Projected month-end</div><div className={'ov-v ' + (c.projected < 0 ? 'text-neg' : '')}>{php(c.projected)}</div></div>
+              <div className="ov-c"><div className="ov-l">Pending net</div><div className={'ov-v ' + (c.pend < 0 ? 'text-neg' : c.pend > 0 ? 'text-pos' : '')}>{sgn(c.pend)}</div></div>
             </div>
+            <div className="flex items-center justify-between gap-3 mt-2.5 text-[11px] text-mu">
+              <span className="min-w-0 truncate">{php(c.allocD)} for payables · {php(c.saved)} in goals{c.spendable < 0 ? ' · over cash' : ''}</span>
+              <button className="link-b shrink-0" onClick={() => goto('plan')}>Manage</button>
+            </div>
+          </>
+        )}
+      </Glass>
+
+      {/* Small cards, side by side from 640px */}
+      {(showCats || showGoals) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+          {showCats && (
+            <Glass i={3} className="p-3.5 sm:p-4">
+              <div className="mini-h"><b>Top spending</b><span className="tabular-nums">{php(c.spent)}</span></div>
+              <div className="stack-bar mt-2.5" role="img" aria-label="Spending by category">{topCats.map(([k, v], i) => <i key={k} style={{ width: (v / catSum) * 100 + '%', background: pal[i % pal.length] }} />)}</div>
+              <div className="mt-2 space-y-1">{topCats.slice(0, 3).map(([k, v], i) => <div key={k} className="flex items-center justify-between gap-2 text-xs leading-[18px]"><span className="flex items-center gap-2 text-mu min-w-0"><i className="w-2 h-2 rounded-full inline-block shrink-0" style={{ background: pal[i % pal.length] }} /><span className="truncate">{k}</span></span><span className="text-neg tabular-nums shrink-0">{php(v)}</span></div>)}</div>
+              {cats.length > 3 && <p className="text-[11px] text-mu mt-1.5">+ {cats.length - 3} more</p>}
+            </Glass>
+          )}
+          {showGoals && (
+            <Glass i={4} className="p-3.5 sm:p-4">
+              <div className="mini-h"><b>Savings goals</b><span>{pct1(goalPct)} overall</span></div>
+              <div className="mt-2.5 space-y-2.5">{S.goals.slice(0, 2).map((g) => <div key={g.id}><div className="flex justify-between gap-2 text-xs leading-[18px] mb-1"><span className="truncate">{g.name}</span><span className="text-mu whitespace-nowrap tabular-nums">{php(g.saved)} / {php(g.target)}</span></div><Bar pct={(g.saved / g.target) * 100} /></div>)}</div>
+              <button className="link-b mt-2" onClick={() => goto('goals')}>{S.goals.length > 2 ? '+ ' + (S.goals.length - 2) + ' more · Open goals' : 'Open goals'}</button>
+            </Glass>
           )}
         </div>
+      )}
+
+      {showRecent && (
+        <Glass i={5} className="p-3.5 sm:p-4">
+          <div className="mini-h"><b>Recent activity</b><span>{Math.min(4, entries.length) + ' latest'}</span></div>
+          <div className="mt-1.5">
+            {entries.slice(0, 4).map((x, i) => (
+              <div key={x.id} className={'flex items-center gap-2.5 py-1.5 ' + (i ? 'border-t border-fg/10' : '')}>
+                <span className={'grid place-items-center w-8 h-8 rounded-full shrink-0 ' + (x.type === 'income' ? 'bg-pos/15 text-pos' : x.type === 'expense' ? 'bg-neg/15 text-neg' : 'bg-fg/10 text-mu')}><Ic n={x.type === 'income' ? 'up' : x.type === 'expense' ? 'down' : 'swap'} s={14} /></span>
+                <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate leading-[18px]">{x.title}</div><div className="text-[11px] text-mu truncate leading-[15px]">{x.sub} · {fd(x.date)}</div></div>
+                <div className={'text-[13px] font-semibold whitespace-nowrap tabular-nums text-right ' + (x.type === 'income' ? 'text-pos' : x.type === 'expense' ? 'text-neg' : '')}>{x.type === 'income' ? '+' : x.type === 'expense' ? '−' : ''}{php(x.amount)}</div>
+              </div>
+            ))}
+          </div>
+        </Glass>
       )}
     </div>
   )
@@ -499,6 +496,15 @@ function Settings({ openSheet }) {
         </div>
         <label className="flex items-center gap-3 mt-5 text-sm text-mu">Custom<input type="color" className="w-12 h-9" value={rgbToHex(ui.accent)} onInput={(e) => set({ accent: hexToRgb(e.target.value) })} onChange={(e) => set({ accent: hexToRgb(e.target.value) })} aria-label="Custom accent colour" /></label>
         {S.accent && <button className="btn mt-4 !py-1.5 !text-xs" onClick={() => set({ accent: '' })}>Reset to preset accent</button>}
+      </Glass>
+
+      {/* Back Tap quick expense (v6) */}
+      <Glass i={4} className="p-5 md:col-span-2 xl:col-span-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <span className="hidden sm:grid place-items-center w-11 h-11 rounded-2xl bg-ac/15 text-ac shrink-0"><Ic n="phone" s={20} /></span>
+          <div className="flex-1 min-w-0"><h3 className="font-semibold">Back Tap quick expense</h3><p className="text-sm text-mu mt-0.5">Tap the back of your iPhone, type an amount in a small pop-up, and Budgy saves it. Includes ready-to-copy steps for the Shortcuts app.</p></div>
+          <button className="btn btn-p w-full sm:w-auto shrink-0" onClick={() => openSheet({ k: 'backtap' })}><Ic n="sparkle" s={16} />Set up Back Tap</button>
+        </div>
       </Glass>
 
       {/* Data */}

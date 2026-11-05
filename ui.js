@@ -31,6 +31,7 @@ const IC = {
   lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
   alert: ['M12 9v4', 'M12 17h.01', 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z']
 }
+IC.mail = ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'm22 7-10 6L2 7']
 const Ic = ({ n, s = 20, cls = '' }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden="true">
     {(IC[n] || []).map((d, i) => <path key={i} d={d} />)}
@@ -50,26 +51,26 @@ const WTYPES = { Cash: { icon: 'cash', plural: 'Cash' }, Bank: { icon: 'bank', p
 const WORDER = ['Cash', 'Bank', 'E-Wallet']
 
 /* ---------- Brand badge ---------- */
-// Budgy mark: a glossy accent-coloured badge with a bevelled white "b". Follows the accent colour live (same look as the PNG app icons).
+// Budgy mark (v6): a white badge with a premium brown "b" and a caramel coin accent. It does not follow the accent colour,
+// so it matches the white/brown PNG app icons exactly (same geometry as make-icons.py).
 function BrandMark({ size = 40, className = '' }) {
   const id = 'bm' + React.useId().replace(/[^a-zA-Z0-9]/g, '')
   return (
-    <svg viewBox="0 0 64 64" width={size} height={size} className={'shrink-0 ' + className} style={{ filter: 'drop-shadow(0 6px 10px rgb(var(--a) / .38)) drop-shadow(0 1px 2px rgb(0 0 0 / .3))' }} aria-hidden="true">
+    <svg viewBox="0 0 64 64" width={size} height={size} className={'shrink-0 ' + className} style={{ filter: 'drop-shadow(0 6px 10px rgb(60 34 18 / .34)) drop-shadow(0 1px 2px rgb(0 0 0 / .22))' }} aria-hidden="true">
       <defs>
-        <linearGradient id={id + 's'} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".26" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".36" /></linearGradient>
-        <linearGradient id={id + 'g'} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".42" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
-        <linearGradient id={id + 'w'} gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="0" y2="50"><stop offset="0" stopColor="#fff" /><stop offset="1" stopColor="#ffd6e0" /></linearGradient>
-        <clipPath id={id + 'c'}><rect width="64" height="64" rx="14.4" /></clipPath>
-        <filter id={id + 'd'} x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.4" floodColor="#3b0010" floodOpacity=".42" /></filter>
+        <linearGradient id={id + 'p'} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#f1e8de" /></linearGradient>
+        <linearGradient id={id + 'b'} gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="0" y2="50"><stop offset="0" stopColor="#a06a43" /><stop offset=".55" stopColor="#6e4429" /><stop offset="1" stopColor="#43261a" /></linearGradient>
+        <linearGradient id={id + 'c'} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e3b07c" /><stop offset="1" stopColor="#b57a48" /></linearGradient>
+        <filter id={id + 'd'} x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.2" stdDeviation="1.1" floodColor="#3b1f10" floodOpacity=".28" /></filter>
       </defs>
-      <rect width="64" height="64" rx="14.4" fill="rgb(var(--a))" />
-      <rect width="64" height="64" rx="14.4" fill={'url(#' + id + 's)'} />
-      <g clipPath={'url(#' + id + 'c)'}><ellipse cx="26" cy="-14" rx="52" ry="40" fill={'url(#' + id + 'g)'} opacity=".7" /></g>
-      <rect x=".5" y=".5" width="63" height="63" rx="13.9" fill="none" stroke="#fff" strokeOpacity=".24" />
-      <g filter={'url(#' + id + 'd)'}>
-        <g transform="translate(0 -.4)" fill="#fff" stroke="#fff"><rect x="21.1" y="12.8" width="6.4" height="37.1" rx="3.2" stroke="none" /><circle cx="33.9" cy="37.1" r="9.6" fill="none" strokeWidth="6.4" /></g>
-        <g fill={'url(#' + id + 'w)'} stroke={'url(#' + id + 'w)'}><rect x="21.1" y="12.8" width="6.4" height="37.1" rx="3.2" stroke="none" /><circle cx="33.9" cy="37.1" r="9.6" fill="none" strokeWidth="6.4" /></g>
+      <rect width="64" height="64" rx="14.4" fill={'url(#' + id + 'p)'} />
+      <rect x="3.2" y="3.2" width="57.6" height="57.6" rx="11.6" fill="none" stroke="#7b4d30" strokeOpacity=".22" strokeWidth=".9" />
+      <rect x=".5" y=".5" width="63" height="63" rx="13.9" fill="none" stroke="#7b4d30" strokeOpacity=".16" />
+      <g filter={'url(#' + id + 'd)'} transform="translate(-1.9 1)" fill={'url(#' + id + 'b)'} stroke={'url(#' + id + 'b)'}>
+        <rect x="21.1" y="12.4" width="6.4" height="37.1" rx="3.2" stroke="none" />
+        <circle cx="33.9" cy="36.7" r="9.6" fill="none" strokeWidth="6.4" />
       </g>
+      <circle cx="47.6" cy="16.6" r="3.3" fill={'url(#' + id + 'c)'} />
     </svg>
   )
 }
@@ -216,6 +217,7 @@ function DeleteWalletSheet({ item, onClose }) {
 }
 
 /* ---------- Sign in / sign up ---------- */
+// v6: a frosted glass panel floating over the ambient backdrop, with a halo logo, a sliding segmented control and icon fields.
 function Auth() {
   const { auth, fbEnabled } = useApp()
   const [mode, setMode] = useState('login'), [f, setF] = useState({ name: '', email: '', pw: '' }), [m, setM] = useState({ t: '', ok: false }), [busy, setBusy] = useState(false)
@@ -228,25 +230,32 @@ function Auth() {
     setM({ t: 'If that email has an account, a reset link is on its way.', ok: true }); return ''
   })
   return (
-    <div className="min-h-dvh flex items-center justify-center p-5">
-      <Glass className="w-full max-w-sm p-6 space-y-3.5" style={{ borderRadius: '1.75rem' }}>
-        <div className="flex items-center gap-3 mb-1"><BrandMark size={46} /><div><div className="text-2xl font-bold tracking-tight leading-none">Budgy</div><div className="text-xs text-mu mt-1">Your money, clearly.</div></div></div>
-        <div className="glass-tile p-1 grid grid-cols-2 gap-1" role="tablist">
-          {[['login', 'Log in'], ['signup', 'Sign up']].map(([k, l]) => <button key={k} role="tab" aria-selected={mode === k} onClick={() => { setMode(k); setM({ t: '' }) }} className={'btn !border-transparent ' + (mode === k ? 'btn-p' : '!bg-transparent')}>{l}</button>)}
+    <div className="auth-wrap">
+      <div className="auth-card rise space-y-4">
+        <div className="text-center">
+          <div className="auth-halo"><BrandMark size={72} /></div>
+          <h1 className="text-[26px] font-bold tracking-tight leading-tight">{login ? 'Welcome back' : 'Create your account'}</h1>
+          <p className="text-[13px] text-mu mt-1">{login ? 'Log in to sync your budget everywhere.' : 'Back up and sync across all your devices.'}</p>
+        </div>
+        <div className="auth-seg" role="tablist">
+          <i className={login ? '' : 'r'} aria-hidden="true" />
+          {[['login', 'Log in'], ['signup', 'Sign up']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => { setMode(k); setM({ t: '' }) }}>{l}</button>)}
         </div>
         {!fbEnabled && <p className="text-xs text-mu flex gap-2"><Ic n="alert" s={16} cls="shrink-0" />Cloud sign-in couldn’t load. Check your connection, or continue on this device only.</p>}
-        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); go(() => (login ? auth.signIn(f.email, f.pw) : auth.signUp(f.name, f.email, f.pw))) }}>
-          {!login && <input className="field" placeholder="Display name" autoComplete="name" value={f.name} onChange={u('name')} />}
-          <input className="field" type="email" autoComplete="email" placeholder="Email" value={f.email} onChange={u('email')} />
-          <input className="field" type="password" autoComplete={login ? 'current-password' : 'new-password'} placeholder={login ? 'Password' : 'Password (6+ characters)'} value={f.pw} onChange={u('pw')} />
+        <form className="space-y-2.5" onSubmit={(e) => { e.preventDefault(); go(() => (login ? auth.signIn(f.email, f.pw) : auth.signUp(f.name, f.email, f.pw))) }}>
+          {!login && <div className="auth-f"><Ic n="user" s={18} /><input className="field" placeholder="Display name" autoComplete="name" value={f.name} onChange={u('name')} /></div>}
+          <div className="auth-f"><Ic n="mail" s={18} /><input className="field" type="email" autoComplete="email" placeholder="Email" value={f.email} onChange={u('email')} /></div>
+          <div className="auth-f"><Ic n="lock" s={18} /><input className="field" type="password" autoComplete={login ? 'current-password' : 'new-password'} placeholder={login ? 'Password' : 'Password (6+ characters)'} value={f.pw} onChange={u('pw')} /></div>
           {m.t && <p className={'text-sm ' + (m.ok ? 'text-pos' : 'text-neg')} role="alert">{m.t}</p>}
-          <button type="submit" disabled={busy || !fbEnabled || !f.email || !f.pw} className="btn btn-p w-full !py-3">{busy ? 'Please wait…' : login ? 'Log in' : 'Create account'}</button>
+          <button type="submit" disabled={busy || !fbEnabled || !f.email || !f.pw} className="btn btn-p auth-go">{busy ? 'Please wait…' : login ? 'Log in' : 'Create account'}</button>
         </form>
-        <div className="flex items-center gap-3 text-xs text-mu"><span className="h-px flex-1 bg-fg/15" />or<span className="h-px flex-1 bg-fg/15" /></div>
-        <button disabled={busy || !fbEnabled} className="btn w-full !py-3" onClick={() => go(auth.google)}><GoogleG />Continue with Google</button>
-        {login && <button className="text-sm text-mu w-full hover:text-fg" onClick={reset}>Forgot password?</button>}
-        <button className="text-sm text-mu w-full hover:text-fg" onClick={auth.useGuest}>Continue on this device only</button>
-      </Glass>
+        <div className="auth-or">or</div>
+        <button disabled={busy || !fbEnabled} className="btn w-full !py-3 !rounded-[1.1rem]" onClick={() => go(auth.google)}><GoogleG />Continue with Google</button>
+        <div className="flex flex-col items-center gap-1.5 pt-0.5">
+          {login && <button className="text-[13px] text-mu hover:text-fg" onClick={reset}>Forgot password?</button>}
+          <button className="text-[13px] text-mu hover:text-fg" onClick={auth.useGuest}>Continue on this device only</button>
+        </div>
+      </div>
     </div>
   )
 }

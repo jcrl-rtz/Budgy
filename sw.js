@@ -1,4 +1,4 @@
-// Budgy service worker (v5 Final).
+// Budgy service worker (v6 Final).
 //
 // HOW UPDATES WORK
 //  1. Deploy new files and change VERSION below (any change to this file makes the browser treat it as a new worker).
@@ -7,9 +7,13 @@
 //  3. The new worker installs and then WAITS (it does not take over mid-session). The app shows an "Update Now" prompt.
 //  4. Update Now posts { type: 'SKIP_WAITING' } to the waiting worker. It activates, the page sees `controllerchange`, and reloads.
 // Nobody ever has to remove the app from the home screen to get an update.
-const VERSION = 'budgy-v5-final-1';
+const VERSION = 'budgy-v6-final-1';
+// Icon cache-busting: the icons are requested with ?v=ICON_REV (index.html and manifest.json use the same value). Bump ICON_REV together with VERSION
+// whenever the artwork changes. A new VERSION creates a fresh cache, and activate() below deletes every older cache, including the old icons.
+// Note: iOS copies the home-screen icon once, when the app is added. An already-installed icon only changes after it is removed and re-added.
+const ICON_REV = '6';
 const CORE = ['./', 'index.html', 'core.js', 'ui.js', 'pages.js', 'p2.js', 'p3.js', 'io.js', 'receipt.js', 'shortcuts.js', 'app.js', 'firebase.js', 'manifest.json',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
+  'icons/icon-192.png?v=' + ICON_REV, 'icons/icon-512.png?v=' + ICON_REV, 'icons/maskable-512.png?v=' + ICON_REV, 'icons/apple-touch-icon.png?v=' + ICON_REV];
 // Pinned CDN files and fonts are cached after first load so the app opens offline. Live Firebase traffic is never cached.
 const CDN = /^(cdn\.jsdelivr\.net|cdn\.tailwindcss\.com|www\.gstatic\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)$/;
 

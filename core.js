@@ -293,7 +293,8 @@ function Provider({ children }) {
       }
     }),
     // Transactions
-    addTx: (x) => setS((s) => ({ ...s, tx: [{ id: nid(), ...x }, ...s.tx] })),
+    addTx: (x) => { const id = nid(); setS((s) => ({ ...s, tx: [{ id, ...x }, ...s.tx] })); return id }, // returns the new id so a toast can offer Undo
+    delTx: (id) => setS((s) => ({ ...s, tx: s.tx.filter((t) => t.id !== id) })),
     // Payables and receivables (a payment moves money in or out of a wallet through calc())
     addDebt: (d) => setS((s) => ({ ...s, debts: [...s.debts, { id: nid(), paid: 0, payments: [], ...d }] })),
     updDebt: (id, p) => upd('debts', id, p),

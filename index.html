@@ -7,8 +7,8 @@
 <meta name="description" content="Personal budget tracker with wallets, payables, receivables, savings and smart allocation.">
 <meta name="theme-color" content="#09090b">
 <link rel="manifest" href="./manifest.json">
-<link rel="icon" type="image/png" href="./icons/icon-192.png">
-<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="./icons/icon-192.png?v=6">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,8 @@ try {
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Geist (UI) + Space Mono (receipt only). The stacks fall back to Apple's system font (SF Pro) when offline. -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
 <!-- Tailwind (Play CDN, pinned) -->
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
@@ -38,7 +39,7 @@ tailwind.config = {
     // It sits between sm and md, so it is listed here in order (this replaces the default screens; the other values are unchanged).
     screens: { sm: '640px', rail: '700px', md: '768px', lg: '1024px', xl: '1280px', '2xl': '1536px' },
     extend: {
-      fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
+      fontFamily: { sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'], mono: ['Space Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'] },
       // Every colour is a CSS variable holding an "r g b" triplet, so the Appearance Engine can retheme the whole app live.
       colors: {
         ac:   'rgb(var(--a) / <alpha-value>)',
@@ -106,9 +107,9 @@ html.light {
 html { -webkit-text-size-adjust: 100%; background: rgb(var(--bg)); }
 html, body, #root { min-height: 100%; }
 body {
-  margin: 0; color: rgb(var(--fg)); font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  margin: 0; color: rgb(var(--fg)); font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; overflow-x: hidden;
-  letter-spacing: -.011em; font-feature-settings: 'kern' 1, 'calt' 1; touch-action: manipulation; -webkit-touch-callout: none;
+  letter-spacing: -.012em; font-feature-settings: 'kern' 1, 'calt' 1, 'ss01' 0; touch-action: manipulation; -webkit-touch-callout: none;
 }
 /* Money and figures: lining, equal-width digits so columns and cards line up to the pixel. */
 .tabular-nums, .nc-bal, .nc-st-v, [class*="tabular"] { font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'tnum' 1, 'lnum' 1, 'kern' 1; letter-spacing: -.02em; }
@@ -331,6 +332,82 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 @media (hover: none) { .btn:hover, .fab:hover, .btn-p:hover, .btn-d:hover { filter: none; } }
 /* Low-power / low-RAM phones: soften the blur so scrolling and tab changes stay at full frame rate. */
 @media (max-width: 480px) { .glass, .navbar, .rail-surface { -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); } .glass-strong { -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); } }
+
+/* =====================================================================
+   v6 Phase 1
+   - Compact Home (overview card, quick-action pills, mini cards, short activity list)
+   - Sign-in screen (glass panel, halo logo, sliding segmented control, icon fields)
+   ===================================================================== */
+/* Quick actions: icon + label always fit. Below 400px the icon sits above the label; nothing is truncated. */
+.qa { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; padding: 8px 4px; border-radius: 1.1rem; font-weight: 600; font-size: 12.5px; line-height: 1.1; white-space: nowrap; letter-spacing: -.01em; }
+.qa > .qa-i { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 999px; flex: none; background: rgb(var(--a) / .15); color: rgb(var(--a)); }
+@media (min-width: 400px) { .qa { flex-direction: row; gap: 7px; padding: 8px 6px; font-size: 13.5px; } .qa > .qa-i { width: 28px; height: 28px; } }
+/* Overview: four mini figures in a 2x2 (4-up on wide screens). */
+.ov { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 640px) { .ov { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ov-c { border-radius: 1rem; padding: 8px 10px; background: rgb(var(--s2) / .55); border: 1px solid rgb(var(--fg) / .06); min-width: 0; }
+.ov-l { font-size: 10.5px; line-height: 14px; color: rgb(var(--mu)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-v { font-size: 14px; line-height: 20px; font-weight: 600; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums lining-nums; }
+.mini-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 18px; }
+.mini-h b { font-weight: 600; }
+.mini-h span { color: rgb(var(--mu)); font-size: 11.5px; white-space: nowrap; }
+.link-b { font-size: 11.5px; font-weight: 600; color: rgb(var(--a)); }
+.stack-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; gap: 2px; background: rgb(var(--fg) / .08); }
+.stack-bar > i { display: block; height: 100%; min-width: 3px; }
+/* Phones: the Net Worth card drops its decorative chip row and gets a wider, shorter shape (all figures stay). */
+@media (max-width: 639px) {
+  .ncard.has-stats { aspect-ratio: 1.78 / 1; }
+  .ncard.has-stats .nc-body > .nc-row:nth-child(2) { display: none; }
+}
+
+/* ---------- Sign-in ---------- */
+.auth-wrap { position: relative; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom)); }
+.auth-card { position: relative; width: 100%; max-width: 392px; border-radius: 2rem; padding: 28px 22px 22px;
+  background-color: rgb(var(--s1) / .58);
+  background-image: linear-gradient(160deg, rgb(255 255 255 / .12) 0%, rgb(255 255 255 / 0) 42%);
+  -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7);
+  border: 1px solid rgb(var(--fg) / .12);
+  box-shadow: 0 1px 0 rgb(255 255 255 / .12) inset, 0 30px 70px -24px rgb(0 0 0 / .55), 0 10px 24px -12px rgb(0 0 0 / .35); }
+html.light .auth-card { background-color: rgb(255 255 255 / .66); box-shadow: 0 1px 0 rgb(255 255 255 / .9) inset, 0 30px 70px -28px rgb(60 40 25 / .30), 0 10px 24px -14px rgb(60 40 25 / .18); }
+.auth-halo { position: relative; width: 84px; height: 84px; margin: 0 auto 14px; display: grid; place-items: center; }
+.auth-halo::before { content: ''; position: absolute; inset: -22px; border-radius: 50%; background: radial-gradient(closest-side, rgb(255 255 255 / .22), rgb(255 255 255 / 0)); pointer-events: none; }
+html.light .auth-halo::before { background: radial-gradient(closest-side, rgb(140 92 60 / .20), rgb(140 92 60 / 0)); }
+.auth-seg { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 999px; background: rgb(var(--s2) / .6); border: 1px solid rgb(var(--fg) / .07); }
+.auth-seg > i { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: rgb(var(--fg) / .12); box-shadow: 0 1px 2px rgb(0 0 0 / .18), inset 0 1px 0 rgb(255 255 255 / .12); transition: transform .32s var(--ease-spring); }
+.auth-seg > i.r { transform: translateX(100%); }
+.auth-seg button { position: relative; z-index: 1; padding: 9px 0; font-size: 13.5px; font-weight: 600; color: rgb(var(--mu)); border-radius: 999px; transition: color .2s; }
+.auth-seg button[aria-selected="true"] { color: rgb(var(--fg)); }
+.auth-f { position: relative; }
+.auth-f > svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: rgb(var(--mu)); pointer-events: none; }
+.auth-f .field { padding-left: 42px; border-radius: 1.1rem; background: rgb(var(--s2) / .55); }
+.auth-go { width: 100%; padding: .9rem 1rem; border-radius: 1.1rem; font-size: 15px; letter-spacing: -.01em; }
+.auth-or { display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: rgb(var(--mu)); }
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: rgb(var(--fg) / .12); }
+@media (prefers-reduced-motion: reduce) { .auth-seg > i { transition: none; } }
+
+/* ---------- v6 final: toast + Back Tap setup blocks ---------- */
+.toast-wrap { position: fixed; left: 0; right: 0; z-index: 70; display: flex; justify-content: center; padding: 0 14px; pointer-events: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); }
+@media (min-width: 700px) { .toast-wrap { bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); } }
+.toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 420px; padding: 10px 10px 10px 12px; border-radius: 1.25rem;
+  background-color: rgb(var(--s1) / .82); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgb(var(--fg) / .12); box-shadow: var(--e3); }
+.toast-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; flex: none; }
+.toast-ic.ok { background: rgb(var(--pos) / .18); color: rgb(var(--pos)); }
+.toast-ic.bad { background: rgb(var(--neg) / .18); color: rgb(var(--neg)); }
+.toast-t { font-size: 13.5px; line-height: 18px; font-weight: 600; }
+.toast-s { font-size: 11.5px; line-height: 16px; color: rgb(var(--mu)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast-b { flex: none; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: rgb(var(--a)); background: rgb(var(--a) / .14); }
+.toast-x { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 999px; color: rgb(var(--mu)); }
+.sc-block { border-radius: 1rem; background: rgb(var(--s1) / .55); border: 1px solid rgb(var(--fg) / .09); overflow: hidden; }
+.sc-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 13.5px; background: rgb(var(--a) / .12); }
+.sc-n { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: rgb(var(--a)); color: rgb(var(--on-a)); flex: none; }
+.sc-ic { display: grid; place-items: center; color: rgb(var(--a)); }
+.sc-body { padding: 10px 12px 11px; }
+.sc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: rgb(var(--mu)); }
+.sc-chip { padding: 3px 10px; border-radius: 999px; background: rgb(var(--fg) / .1); color: rgb(var(--fg)); font-weight: 600; }
+.sc-url { font-family: 'Space Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 17px; word-break: break-all; color: rgb(var(--fg)); }
+.sc-var { display: inline-block; margin-left: 2px; padding: 0 7px; border-radius: 7px; background: #2f6df6; color: #fff; font-family: 'Geist', -apple-system, system-ui, sans-serif; font-size: 11px; font-weight: 600; line-height: 17px; }
+.sc-hint { margin-top: 7px; font-size: 11.5px; line-height: 16px; color: rgb(var(--mu)); }
 </style>
 </head>
 <body>
@@ -346,7 +423,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 <script src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-is@18.3.1/umd/react-is.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js"></script>
-<!-- html2canvas (pinned) turns the brown balance receipt into a PNG -->
+<!-- html2canvas (pinned) turns the white balance receipt into a PNG -->
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <!-- Babel compiles the JSX files below right in the browser (no build step) -->
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>

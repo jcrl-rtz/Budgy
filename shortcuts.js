@@ -1,6 +1,13 @@
 /* =====================================================================
-   shortcuts.js  (v4 Phase 3)
+   shortcuts.js  (v4 Phase 3; v6 final: one-step deep link + Back Tap setup)
    Quick-add links for iOS Shortcuts (and any bookmark, widget or QR code).
+
+   v6 DEEP LINK (silent save):  https://YOU.github.io/REPO/?action=addExpense&amount=250
+     action  addExpense | addIncome
+     amount  "250", "1,250.50" or "250 lunch" (anything after the number becomes the note)
+     cat, wallet, note   optional (wallet defaults to your first wallet, category to Other)
+   The entry is saved straight away, the address bar is cleaned, and a toast with an Undo button confirms it.
+   Nothing is saved when the amount is missing/invalid, the wallet is unknown, or an expense is bigger than the wallet's balance.
 
    A link such as   https://YOU.github.io/REPO/?add=expense&cat=Food&amount=250&wallet=Cash
    opens Budgy with the Add transaction form already filled in. Nothing is saved until you tap Save.
@@ -37,6 +44,47 @@ const QA_KEY = 'budgy.qa'
 const qaClean = (v, n) => String(v == null ? '' : v).trim().slice(0, n)
 const qaDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? String(v).trim() : '')
 const qaPick = (list, v) => { const s = qaClean(v, 40).toLowerCase(); return s ? list.find((x) => String(x).toLowerCase() === s) || '' : '' }
+
+/* ---------- 1b. v6 deep link receiver: ?action=addExpense&amount=250 ---------- */
+// Captured the moment the page loads (same idea as above), so signing in first never loses it. Handled by App once the budget is ready.
+const DL_KEY = 'budgy.dl'
+;(function captureDeepLink() {
+  try {
+    const p = new URLSearchParams(location.search)
+    if (!p.get('action')) return
+    const o = {}; p.forEach((v, k) => { o[k] = v })
+    sessionStorage.setItem(DL_KEY, JSON.stringify({ t: Date.now(), o }))
+    history.replaceState(null, '', location.pathname + location.hash) // a refresh can never save it twice
+  } catch (e) {}
+})()
+
+// Returns the waiting link (at most 15 minutes old) and clears it, or null.
+function takeDeepLink() {
+  try {
+    const raw = sessionStorage.getItem(DL_KEY); if (!raw) return null
+    sessionStorage.removeItem(DL_KEY)
+    const j = JSON.parse(raw); if (!j || !j.o || Date.now() - j.t > 15 * 60 * 1000) return null
+    return j.o
+  } catch (e) { return null }
+}
+
+// Turns a link into a ready-to-save entry: { ok: true, tx } or { ok: false, error }. Pure: it saves nothing.
+function buildDeepTx(S, c, r) {
+  const act = qaClean(r.action, 20).toLowerCase()
+  const type = act === 'addexpense' ? 'expense' : act === 'addincome' ? 'income' : ''
+  if (!type) return { ok: false, error: 'Unknown shortcut action.' }
+  // "250", "₱1,250.50" or "250 lunch": the first number is the amount, whatever follows is the note.
+  const m = /^[^\d.]*(\d[\d,]*(?:\.\d+)?|\.\d+)\s*(.*)$/.exec(String(r.amount == null ? '' : r.amount).trim())
+  const amount = m ? q(parseFloat(m[1].replace(/,/g, ''))) : 0
+  if (!(amount > 0) || amount > 1e7) return { ok: false, error: 'Not saved: couldn’t read that amount.' }
+  const want = qaClean(r.wallet, 40).toLowerCase()
+  const w = want ? S.wallets.find((x) => x.id === r.wallet || x.name.toLowerCase() === want) : S.wallets[0]
+  if (!w) return { ok: false, error: 'Not saved: no wallet called “' + qaClean(r.wallet, 40) + '”.' }
+  if (type === 'expense' && amount > c.bal[w.id]) return { ok: false, error: 'Not saved: ' + w.name + ' only has ' + php(c.bal[w.id]) + '.' }
+  const category = qaPick(CATS[type], r.cat) || 'Other'
+  const note = qaClean(r.note, 40) || qaClean(m[2], 40)
+  return { ok: true, tx: { type, amount, category, date: off(0), note, wallet: w.id }, walletName: w.name }
+}
 
 function quickAddSheet(S, r) {
   const t = qaClean(r.add, 12).toLowerCase()
@@ -177,5 +225,106 @@ function ShortcutsSheet({ onClose }) {
         </details>
       </div>
     </Sheet>
+  )
+}
+
+/* ---------- 4. Back Tap quick expense: setup sheet ---------- */
+// One small "block" drawn like a Shortcuts action, so the steps can be copied by eye.
+function ScBlock({ n, icon, title, children }) {
+  return (
+    <div className="sc-block">
+      <div className="sc-head"><span className="sc-n">{n}</span><span className="sc-ic"><Ic n={icon} s={15} /></span><b>{title}</b></div>
+      <div className="sc-body">{children}</div>
+    </div>
+  )
+}
+
+function BackTapSheet({ onClose }) {
+  const { S } = useApp()
+  const [cat, setCat] = useState(''), [wallet, setWallet] = useState('')
+  const usable = CATS.expense.includes(cat) ? cat : ''
+  const prefix = scUrl({ action: 'addExpense', cat: usable, wallet }) + (usable || wallet ? '&' : '?') + 'amount='
+  const test = prefix + '1&note=' + encodeURIComponent('Shortcut test')
+  return (
+    <Sheet title="Back Tap quick expense" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-mu">Tap the back of your iPhone, type an amount in a small pop-up, and the expense is saved. Apple doesn’t allow a website to install a Shortcut for you, so build it once (about a minute):</p>
+
+        <div className="glass-tile p-3.5 space-y-3">
+          <div className="text-sm font-semibold">1. Choose what it saves <span className="text-mu font-normal">(optional)</span></div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Category"><select className="field" value={usable} onChange={(e) => setCat(e.target.value)}><option value="">Other</option>{CATS.expense.map((x) => <option key={x}>{x}</option>)}</select></Field>
+            <Field label="Wallet"><select className="field" value={wallet} onChange={(e) => setWallet(e.target.value)}><option value="">First wallet</option>{S.wallets.map((w) => <option key={w.id} value={w.name}>{w.name}</option>)}</select></Field>
+          </div>
+        </div>
+
+        <div className="glass-tile p-3.5 space-y-2.5">
+          <div className="text-sm font-semibold">2. Build the shortcut in the Shortcuts app</div>
+          <p className="text-xs text-mu">Tap <b className="text-fg">Open Shortcuts</b>, then add these three actions in this order:</p>
+          <ScBlock n="1" icon="pen" title="Ask for Text">
+            <div className="sc-row"><span>Prompt</span><span className="sc-chip">Amount?</span></div>
+            <p className="sc-hint">On iOS 17 and later this action is called <b>Ask for Input</b>. Keep the type on <b>Text</b>. This is the small floating box that appears over whatever you’re doing.</p>
+          </ScBlock>
+          <ScBlock n="2" icon="file" title="URL">
+            <div className="sc-url">{prefix}<span className="sc-var">Provided Input</span></div>
+            <p className="sc-hint">Tap <b>Copy URL</b> below, paste it into the URL action, then tap right after <code>amount=</code> and choose the variable <b>Provided Input</b> (it appears as a blue chip).</p>
+          </ScBlock>
+          <ScBlock n="3" icon="right" title="Open URLs">
+            <div className="sc-row"><span>Input</span><span className="sc-chip">URL</span></div>
+            <p className="sc-hint">This opens Budgy, which saves the entry and shows a confirmation with Undo.</p>
+          </ScBlock>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <CopyBtn text={prefix} label="Copy URL" cls="btn-p" />
+            <a className="btn" href="shortcuts://create-shortcut"><Ic n="phone" s={15} />Open Shortcuts</a>
+          </div>
+          <p className="text-xs text-mu">Name it “Add Expense”. You can also type a note after the amount, for example <code>250 lunch</code>. If that fails, or a note has special characters, add a <b>URL Encode</b> action after Ask for Text and use its output.</p>
+        </div>
+
+        <div className="glass-tile p-3.5 space-y-2">
+          <div className="text-sm font-semibold">3. Trigger it with Back Tap</div>
+          <ol className="text-sm text-mu space-y-1.5 list-decimal pl-5">
+            <li>Open <b className="text-fg">Settings</b> › <b className="text-fg">Accessibility</b> › <b className="text-fg">Touch</b>.</li>
+            <li>Scroll down and tap <b className="text-fg">Back Tap</b>.</li>
+            <li>Choose <b className="text-fg">Double Tap</b> or <b className="text-fg">Triple Tap</b>.</li>
+            <li>Scroll to the <b className="text-fg">Shortcuts</b> section and pick <b className="text-fg">Add Expense</b>.</li>
+          </ol>
+        </div>
+
+        <div className="glass-tile p-3.5 space-y-2">
+          <div className="text-sm font-semibold">4. Test it</div>
+          <p className="text-xs text-mu">This opens your link with an amount of 1 and saves a ₱1.00 test expense. Tap <b className="text-fg">Undo</b> on the confirmation to remove it.</p>
+          <a className="btn" href={test}><Ic n="check" s={15} />Run test</a>
+        </div>
+
+        <div className="glass-tile p-3.5 space-y-1.5 border-ac/40">
+          <div className="text-sm font-semibold flex items-center gap-2"><Ic n="alert" s={16} cls="text-ac" />Good to know</div>
+          <ul className="text-xs text-mu space-y-1.5 list-disc pl-4">
+            <li>Shortcuts opens links in <b className="text-fg">Safari</b>, not the Home Screen app, so Safari flashes open briefly after you type the amount. Sign in to Budgy once in Safari so entries sync to your account.</li>
+            <li>Nothing is saved if the amount is invalid, the wallet isn’t found, or an expense is bigger than the wallet balance. You’ll see a message instead.</li>
+            <li>A link can add an entry whenever you open it while signed in, so only tap links you trust. Every save shows an Undo button for a few seconds.</li>
+          </ul>
+        </div>
+      </div>
+    </Sheet>
+  )
+}
+
+/* ---------- 5. Toast (confirmation with optional Undo) ---------- */
+function Toast({ t, onClose }) {
+  useEffect(() => {
+    if (!t) return
+    const id = setTimeout(onClose, t.ok ? 7000 : 9000)
+    return () => clearTimeout(id)
+  }, [t])
+  if (!t) return null
+  return (
+    <div className="toast-wrap" role="status" aria-live="polite">
+      <div className="toast fade">
+        <span className={'toast-ic ' + (t.ok ? 'ok' : 'bad')}><Ic n={t.ok ? 'check' : 'alert'} s={16} /></span>
+        <div className="min-w-0 flex-1"><div className="toast-t">{t.msg}</div>{t.sub && <div className="toast-s">{t.sub}</div>}</div>
+        {t.undo && <button className="toast-b" onClick={() => { t.undo(); onClose() }}>Undo</button>}
+        <button className="toast-x" onClick={onClose} aria-label="Dismiss"><Ic n="x" s={14} /></button>
+      </div>
+    </div>
   )
 }
