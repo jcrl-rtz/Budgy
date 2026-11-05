@@ -1,15 +1,54 @@
 /* =====================================================================
-   app.js  (Phase 3)
-   The responsive shell: sidebar on tablets/desktops, floating pill nav + circular FAB on phones.
-   Phase 3 adds: avatar + sync badge in the header, the onboarding guide, the in-app update prompt and the account sheets.
+   app.js  (Phase 1 of v3)
+   The responsive shell.
+   - Phones: header + floating Material navigation bar + rounded-square FAB.
+   - From 700px wide (small tablets, landscape phones, desktops): the bar becomes a vertical navigation rail on the left
+     (icons with labels; it widens into a full drawer at 1280px). The breakpoint is called "rail" in the Tailwind config in index.html.
+   - The header never truncates: the greeting wraps onto as many lines as it needs and shrinks its font to stay tidy.
    ===================================================================== */
 const NAV = [['home', 'Home', 'home'], ['wallets', 'Wallets', 'wallet'], ['pending', 'Pending', 'swap'], ['plan', 'Allocate', 'pie'], ['goals', 'Goals', 'target']]
+
+/* Title that wraps instead of truncating. It starts at `max` px and steps down toward `min` px until it fits in `lines` lines;
+   if it still needs more lines at the minimum size, it simply wraps further (it is never cut off with an ellipsis). */
+function FitTitle({ text, max = 30, min = 18, lines = 2 }) {
+  const ref = useRef(null), lastW = useRef(0)
+  const fit = () => {
+    const el = ref.current; if (!el) return
+    let s = max; el.style.fontSize = s + 'px'
+    while (s > min && el.scrollHeight > s * 1.16 * lines + 2) { s -= 1; el.style.fontSize = s + 'px' }
+  }
+  React.useLayoutEffect(fit, [text, max, min, lines])
+  useEffect(() => {
+    const el = ref.current; if (!el) return
+    const run = () => { const w = el.clientWidth; if (w !== lastW.current) { lastW.current = w; fit() } } // width only, so resizing the font can never loop
+    const ro = window.ResizeObserver ? new ResizeObserver(run) : null
+    if (ro) ro.observe(el); else addEventListener('resize', run)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit) // re-measure once the Sora font has loaded
+    return () => { if (ro) ro.disconnect(); else removeEventListener('resize', run) }
+  }, [])
+  return <h1 ref={ref} className="font-semibold tracking-tight" style={{ lineHeight: 1.16, textWrap: 'balance', overflowWrap: 'break-word', hyphens: 'auto' }}>{text}</h1>
+}
 
 function App() {
   const { S, ready, user, guest, sync } = useApp()
   const [view, setView] = useState('home'), [sheet, setSheet] = useState(null)
   const openSheet = (s) => setSheet(s), closeSheet = () => setSheet(null)
   const goto = (v) => { setView(v); window.scrollTo({ top: 0 }) }
+
+  // Fades in the status-bar guard (see .safe-top in index.html) once the page has scrolled.
+  useEffect(() => {
+    const el = document.querySelector('.safe-top'); if (!el) return
+    const f = () => el.classList.toggle('on', window.scrollY > 6)
+    f(); addEventListener('scroll', f, { passive: true }); return () => removeEventListener('scroll', f)
+  }, [])
+
+  // Phase 3: an iOS Shortcuts / quick-add link (?add=expense&cat=Food ...) opens the matching form, pre-filled, once the budget is ready.
+  // Links are captured at load time in shortcuts.js, so signing in first does not lose them.
+  useEffect(() => {
+    if (!ready || (!user && !guest) || (user && sync !== 'synced' && sync !== 'error')) return
+    const sh = takeQuickAdd(S)
+    if (sh) { setView(sh.k === 'debt' ? 'pending' : 'home'); setSheet(sh) }
+  }, [ready, user, guest, sync])
 
   if (!ready) return <div id="boot"><span /></div>
   if (!user && !guest) return <Auth />
@@ -25,52 +64,66 @@ function App() {
 
   return (
     <div className="min-h-dvh">
-      {/* Tablet / desktop sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 z-30 w-[4.5rem] lg:w-60 flex-col p-2 lg:p-4 glass backdrop-blur-md backdrop-saturate-150 !rounded-none !border-y-0 !border-l-0">
-        <div className="flex items-center justify-center lg:justify-start gap-2.5 px-1 py-3"><img src="./icons/icon-192.png" alt="" className="w-9 h-9 rounded-xl shrink-0" /><span className="hidden lg:inline text-lg font-bold tracking-tight">Budgy</span></div>
-        <nav className="mt-4 space-y-1" aria-label="Main">
-          {NAV.map(([k, l, ic]) => (
-            <button key={k} title={l} aria-label={l} aria-current={view === k ? 'page' : undefined} onClick={() => goto(k)} className={'w-full flex items-center justify-center lg:justify-start gap-3 px-2 lg:px-3 py-2.5 rounded-2xl text-sm font-medium transition-colors ' + (view === k ? 'bg-ac/15 text-ac' : 'text-mu hover:text-fg hover:bg-fg/5')}>
-              <Ic n={ic} s={19} /><span className="hidden lg:inline">{l}</span>
-            </button>
-          ))}
+      {/* Side rail: tablets, landscape phones and desktops. Icons with labels; widens into a drawer at 1280px. */}
+      <aside className="hidden rail:flex rail-surface fixed left-0 top-0 bottom-0 z-30 w-20 xl:w-64 flex-col items-center xl:items-stretch gap-2 px-2 xl:px-4 pb-4 overflow-y-auto" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <div className="flex items-center justify-center xl:justify-start gap-2.5 px-1 py-2">
+          <BrandMark size={40} />
+          <span className="hidden xl:inline text-lg font-bold tracking-tight">Budgy</span>
+        </div>
+        <button className="fab w-14 h-14 xl:w-full xl:h-14 xl:gap-2.5 xl:rounded-full mt-2 shrink-0" aria-label="Quick add" title="Quick add" onClick={() => openSheet({ k: 'quick' })}>
+          <span className="flex items-center gap-2.5"><Ic n="plus" s={24} /><span className="hidden xl:inline text-sm font-semibold">Quick Add</span></span>
+        </button>
+        <nav className="mt-4 w-full flex flex-col gap-1.5" aria-label="Main">
+          {NAV.map(([k, l, ic]) => {
+            const on = view === k
+            return (
+              <button key={k} title={l} aria-label={l} aria-current={on ? 'page' : undefined} onClick={() => goto(k)}
+                className={'group w-full flex flex-col xl:flex-row items-center gap-1 xl:gap-3 py-1 xl:py-0 xl:h-14 xl:px-4 xl:rounded-full transition-colors ' + (on ? 'text-fg xl:bg-ac/20' : 'text-mu hover:text-fg xl:hover:bg-fg/5')}>
+                <span className={'grid place-items-center h-8 w-14 xl:h-6 xl:w-6 rounded-full transition-colors ' + (on ? 'bg-ac/25 text-ac xl:bg-transparent' : 'group-hover:bg-fg/10 xl:group-hover:bg-transparent')}><Ic n={ic} s={22} /></span>
+                <span className={'text-[11px] xl:text-sm leading-none ' + (on ? 'font-bold' : 'font-medium')}>{l}</span>
+              </button>
+            )
+          })}
         </nav>
-        <div className="mt-auto space-y-3">
-          <button className="w-full flex items-center justify-center lg:justify-start gap-3 rounded-2xl px-1.5 lg:px-2 py-1.5 hover:bg-fg/5 transition-colors text-left" title="Profile and settings" aria-label="Profile and settings" onClick={() => goto('settings')}>
-            <Avatar size={34} /><span className="hidden lg:block min-w-0"><span className="block text-sm font-medium truncate">{S.name.trim() || 'Your profile'}</span><span className="block text-[11px] text-mu">Settings</span></span>
+        <div className="mt-auto w-full pt-4 space-y-3 flex flex-col items-center xl:items-stretch">
+          <button className="w-full flex items-center justify-center xl:justify-start gap-3 rounded-2xl xl:rounded-full px-1.5 xl:px-2 py-1.5 hover:bg-fg/5 transition-colors text-left" title="Profile and settings" aria-label="Profile and settings" onClick={() => goto('settings')}>
+            <Avatar size={36} /><span className="hidden xl:block min-w-0"><span className="block text-sm font-medium truncate">{S.name.trim() || 'Your profile'}</span><span className="block text-[11px] text-mu">Settings</span></span>
           </button>
-          <div className="hidden lg:block px-1"><SyncBadge /></div>
-          <button className="btn btn-p w-full !rounded-2xl !py-3" aria-label="Quick add" onClick={() => openSheet({ k: 'quick' })}><Ic n="plus" s={18} /><span className="hidden lg:inline">Quick Add</span></button>
+          <div className="hidden xl:block px-1"><SyncBadge /></div>
         </div>
       </aside>
 
-      {/* Content uses the full width next to the sidebar */}
-      <main className="md:ml-[4.5rem] lg:ml-60 px-4 md:px-6 lg:px-8 min-w-0 pb-36 md:pb-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
-        <header className="flex items-center justify-between gap-3 mb-5 md:pt-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <button className="md:hidden shrink-0 rounded-full active:scale-95 transition-transform" aria-label="Profile and settings" onClick={() => goto('settings')}><Avatar size={44} /></button>
-            <div className="min-w-0">
-              <div className="text-xs text-ac font-medium">{new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight truncate">{title}</h1>
+      {/* Content. The top padding clears the notch / status bar plus a comfortable margin, so the header is never drawn under it. */}
+      <main className="rail:ml-20 xl:ml-64 px-4 rail:px-6 xl:px-8 min-w-0 pb-36 rail:pb-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.75rem)' }}>
+        <header className="flex items-center justify-between gap-3 mb-5 rail:pt-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <button className="rail:hidden shrink-0 rounded-full active:scale-95 transition-transform" style={{ boxShadow: 'var(--e2)' }} aria-label="Profile and settings" onClick={() => goto('settings')}><Avatar size={44} /></button>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-ac font-medium leading-tight mb-0.5">{new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+              <FitTitle text={title} max={30} min={18} lines={2} />
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <SyncBadge short cls="backdrop-blur-md" />
-            <button aria-label="Reports" title="Reports" onClick={() => openSheet({ k: 'report' })} className="btn btn-i backdrop-blur-md"><Ic n="file" s={18} /></button>
-            <button aria-label="Settings" title="Settings" onClick={() => goto('settings')} className={'btn btn-i backdrop-blur-md ' + (view === 'settings' ? '!bg-ac/15 !text-ac !border-ac/30' : '')}><Ic n="gear" s={18} /></button>
+            <SyncBadge short />
+            <button aria-label="Reports" title="Reports" onClick={() => openSheet({ k: 'report' })} className="btn btn-i"><Ic n="file" s={18} /></button>
+            <button aria-label="Settings" title="Settings" onClick={() => goto('settings')} className={'btn btn-i ' + (view === 'settings' ? '!bg-ac/20 !text-ac !border-ac/30' : '')}><Ic n="gear" s={18} /></button>
           </div>
         </header>
-        <div key={view} className="fade">{page}</div>
+        <div key={view} className="page-in">{page}</div>
       </main>
 
-      {/* Phone: floating pill navigation + circular FAB */}
-      <button className="md:hidden fixed right-4 z-40 w-14 h-14 rounded-full bg-ac text-onac grid place-items-center active:scale-90 transition-transform" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)', boxShadow: '0 14px 30px -10px rgb(var(--a) / .85), inset 0 1px 0 rgb(255 255 255 / .35)' }} aria-label="Quick add" onClick={() => openSheet({ k: 'quick' })}><Ic n="plus" s={26} /></button>
-      <nav className="md:hidden glass backdrop-blur-md backdrop-saturate-150 fixed left-1/2 -translate-x-1/2 z-40 !rounded-full px-2 py-2 flex gap-1 max-w-[94vw]" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 12px)' }} aria-label="Main">
-        {NAV.map(([k, l, ic]) => (
-          <button key={k} aria-label={l} aria-current={view === k ? 'page' : undefined} onClick={() => goto(k)} className={'flex flex-col items-center rounded-full px-3.5 py-1.5 transition-colors ' + (view === k ? 'bg-ac text-onac' : 'text-mu')}>
-            <Ic n={ic} s={20} /><span className="text-[10px] font-semibold mt-0.5">{l}</span>
-          </button>
-        ))}
+      {/* Phone: rounded-square FAB + floating Material navigation bar */}
+      <button className="rail:hidden fab fixed right-4 z-40 w-14 h-14" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 92px)' }} aria-label="Quick add" onClick={() => openSheet({ k: 'quick' })}><Ic n="plus" s={26} /></button>
+      <nav className="rail:hidden navbar fixed left-1/2 -translate-x-1/2 z-40 w-[calc(100%-1.5rem)] max-w-md !rounded-[1.75rem] px-2 py-2 flex gap-1" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 12px)' }} aria-label="Main">
+        {NAV.map(([k, l, ic]) => {
+          const on = view === k
+          return (
+            <button key={k} aria-label={l} aria-current={on ? 'page' : undefined} onClick={() => goto(k)} className="flex-1 min-w-0 flex flex-col items-center gap-1 py-1">
+              <span className={'grid place-items-center h-8 w-full max-w-[4rem] rounded-full transition-colors ' + (on ? 'bg-ac/25 text-ac' : 'text-mu')}><Ic n={ic} s={21} /></span>
+              <span className={'text-[11px] leading-none ' + (on ? 'font-bold text-fg' : 'font-medium text-mu')}>{l}</span>
+            </button>
+          )
+        })}
       </nav>
 
       {/* Sheets */}
@@ -79,6 +132,8 @@ function App() {
       {sheet && sheet.k === 'balance' && <BalanceSheet item={sheet.item} onClose={closeSheet} />}
       {sheet && <P2Sheets sheet={sheet} onClose={closeSheet} />}
       {sheet && <P3Sheets sheet={sheet} onClose={closeSheet} openSheet={openSheet} />}
+      {sheet && sheet.k === 'data' && <DataSheet onClose={closeSheet} />}
+      {sheet && sheet.k === 'shortcuts' && <ShortcutsSheet onClose={closeSheet} />}
       {sheet && sheet.k === 'delete' && <DeleteWalletSheet item={sheet.item} onClose={closeSheet} />}
       {guide && <Onboarding onClose={closeSheet} />}
     </div>

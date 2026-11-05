@@ -1,5 +1,5 @@
 /* =====================================================================
-   core.js  (Phase 1)
+   core.js  (v4 Phase 1: flat Material You themes; wallet/leather themes removed. v4 Phase 2: Net Worth card display settings in the store)
    Helpers, themes, the Appearance Engine, money maths, sample data and the
    app store (local cache + Firebase sync). No UI in this file except the Provider.
    ===================================================================== */
@@ -31,7 +31,20 @@ const fd = (s) => new Date(s + 'T00:00').toLocaleDateString('en-PH', { month: 's
 const mq = () => (window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null)
 
 /* ---------- Appearance Engine ---------- */
-// The 6 presets, taken from your original app. d = dark surfaces, l = light surfaces: [background, card, card-2, border].
+// Look tokens for every theme. Android 17 / Material You: flat, solid surfaces with no page gradient, no card gradient and no texture.
+// The hero card gets a single flat accent tint layer (not a gradient). `grain` and `stitch*` stay defined as inert values because the Net Worth
+// credit card (.nc-grain / .nc-stitch in index.html) still reads them; they resolve to "nothing" for every theme.
+const stdLook = (a, dark) => ({
+  page: 'none',
+  card: 'none',
+  hero: 'linear-gradient(rgb(' + a + ' / ' + (dark ? '.14' : '.10') + '), rgb(' + a + ' / ' + (dark ? '.14' : '.10') + '))',
+  grain: 'none', stitch: '255 255 255', stitchA: 0, s1a: 1, s2a: 1,
+  edge: '0 0 0 0 transparent'
+})
+const lookOf = (th, dark, accent) => (th.look ? th.look(dark) : stdLook(accent, dark))
+const accentOf = (th, dark) => (dark ? th.a : th.al || th.a)
+
+// Colour presets. d = dark surfaces, l = light surfaces: [background, card, card-2, border].
 const THEMES = [
   { id: 'classic', name: 'Classic', a: '225 29 72',  d: ['#09090b', '#111113', '#1a1a1d', '#27272a'], l: ['#f6f6f7', '#ffffff', '#f0f0f2', '#e4e4e7'] },
   { id: 'ocean',   name: 'Ocean',   a: '59 130 246', d: ['#080c14', '#0d1320', '#141c2c', '#1f2a3d'], l: ['#f3f6fb', '#ffffff', '#eaf0f8', '#dbe4f0'] },
@@ -41,7 +54,7 @@ const THEMES = [
   { id: 'slate',   name: 'Slate',   a: '100 116 139', d: ['#0b0d10', '#121519', '#1a1e24', '#272d35'], l: ['#f4f5f7', '#ffffff', '#ebedf1', '#dcdfe5'] },
   { id: 'maroon',  name: 'Maroon',  a: '159 29 58',  d: ['#0d0809', '#150d0f', '#1f1417', '#33202a'], l: ['#faf5f6', '#ffffff', '#f4eaed', '#e8d6dc'] },
   { id: 'brown',   name: 'Brown',   a: '161 98 58',  d: ['#0d0a08', '#15100d', '#1e1814', '#302720'], l: ['#f9f6f3', '#ffffff', '#f2ebe5', '#e5d9ce'] },
-  { id: 'yellow',  name: 'Yellow',  a: '234 179 8',  d: ['#0d0c06', '#15140b', '#1e1c12', '#302d19'], l: ['#fbf9ef', '#ffffff', '#f5f1dd', '#e9e2c0'] }
+  { id: 'yellow',  name: 'Yellow',  a: '234 179 8',  d: ['#0d0c06', '#15140b', '#1e1c12', '#302d19'], l: ['#fbf9ef', '#ffffff', '#f5f1dd', '#e9e2c0'] },
 ]
 // Quick accent colours shown in Settings (plus a free colour picker).
 const SWATCHES = [['Crimson', '225 29 72'], ['Violet', '139 92 246'], ['Azure', '59 130 246'], ['Emerald', '16 185 129'], ['Amber', '245 158 11'], ['Pink', '236 72 153'], ['Slate', '100 116 139']]
@@ -52,14 +65,17 @@ const rgbToHex = (s) => '#' + s.split(' ').map((n) => (+n).toString(16).padStart
 const lum = (rgb) => { const [r, g, b] = rgb.split(' ').map((n) => { n = +n / 255; return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4) }); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
 const isDarkMode = (mode) => (mode === 'system' ? !!(mq() && mq().matches) : mode !== 'light')
 
-// Writes the theme onto <html> as CSS variables. Tailwind colours (bg-ac, text-fg, ...) all read these.
+// Writes the theme onto <html> as CSS variables. Tailwind colours (bg-ac, text-fg, ...) and the surface classes in index.html all read these.
 function applyAppearance({ mode, theme, accent }) {
   const dark = isDarkMode(mode), th = THEMES.find((t) => t.id === theme) || THEMES[0], c = dark ? th.d : th.l, r = document.documentElement
+  const lk = lookOf(th, dark, accent)
   const vars = {
     '--bg': hexToRgb(c[0]), '--s1': hexToRgb(c[1]), '--s2': hexToRgb(c[2]), '--bd': hexToRgb(c[3]),
-    '--fg': dark ? '250 250 250' : '24 24 27', '--mu': dark ? '161 161 170' : '82 82 91',
+    '--fg': lk.fg || (dark ? '250 250 250' : '24 24 27'), '--mu': lk.mu || (dark ? '161 161 170' : '82 82 91'),
     '--pos': dark ? '52 211 153' : '4 120 87', '--neg': dark ? '251 113 133' : '220 38 38',
-    '--a': accent, '--on-a': lum(accent) > 0.179 ? '20 20 22' : '255 255 255' // pick whichever of dark/white text has the higher contrast on the accent
+    '--a': accent, '--on-a': lum(accent) > 0.179 ? '20 20 22' : '255 255 255', // pick whichever of dark/white text has the higher contrast on the accent
+    '--page': lk.page, '--card-grad': lk.card, '--hero-grad': lk.hero, '--grain': lk.grain,
+    '--stitch': lk.stitch, '--stitch-a': String(lk.stitchA), '--s1-a': String(lk.s1a), '--s2-a': String(lk.s2a), '--edge': lk.edge
   }
   Object.keys(vars).forEach((k) => r.style.setProperty(k, vars[k]))
   r.classList.toggle('light', !dark); r.classList.toggle('dark', dark); r.style.colorScheme = dark ? 'dark' : 'light'
@@ -67,22 +83,37 @@ function applyAppearance({ mode, theme, accent }) {
   ls.set(UIK, JSON.stringify({ mode, bg: vars['--bg'] })) // read by the tiny script in index.html to avoid a flash
 }
 
+/* ---------- Net Worth card display settings (v4 Phase 2) ---------- */
+// S.cardStats = { order, hidden }. `order` always lists all four figures (their left-to-right order on the card); `hidden` lists the ones switched off.
+// Keeping hidden figures in `order` means switching one back on returns it to the place the user gave it.
+const CARD_KEYS = ['liquid', 'payables', 'expenses', 'receivables']
+const cardDefault = () => ({ order: CARD_KEYS.slice(), hidden: [] })
+const fixCard = (c) => {
+  const o = c && typeof c === 'object' ? c : {}, order = []
+  ;(Array.isArray(o.order) ? o.order : []).forEach((k) => { if (CARD_KEYS.includes(k) && !order.includes(k)) order.push(k) })
+  CARD_KEYS.forEach((k) => { if (!order.includes(k)) order.push(k) })
+  const hidden = (Array.isArray(o.hidden) ? o.hidden : []).filter((k, i, a) => CARD_KEYS.includes(k) && a.indexOf(k) === i)
+  return { order, hidden }
+}
+
 /* ---------- Data model ---------- */
 // Same shape as your earlier Budgy so existing cloud data keeps working. Phase 2 adds transactions, payables and goals screens on top of it.
 const blank = () => ({
   name: '', avatar: null, seen: false, mode: 'dark', theme: 'classic', accent: '',
   wallets: [{ id: 'w1', name: 'Cash on Hand', type: 'Cash', balance: 0 }],
-  tx: [], debts: [], goals: [], alloc: {}
+  tx: [], debts: [], goals: [], alloc: {}, srcs: [], cardStats: cardDefault()
 })
-const dataBlank = () => { const b = blank(); return { wallets: b.wallets, tx: b.tx, debts: b.debts, goals: b.goals, alloc: b.alloc } }
+const dataBlank = () => { const b = blank(); return { wallets: b.wallets, tx: b.tx, debts: b.debts, goals: b.goals, alloc: b.alloc, srcs: b.srcs } }
 const fix = (s) => {
   const b = blank(), o = { ...b, ...s }
   o.wallets = Array.isArray(o.wallets) && o.wallets.length ? o.wallets : b.wallets
   ;['tx', 'debts', 'goals'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = [] })
   if (!o.alloc || typeof o.alloc !== 'object') o.alloc = {}
+  o.srcs = Array.isArray(o.srcs) ? o.srcs.filter((x) => x && (x.kind === 'payable' || x.kind === 'receivable') && typeof x.name === 'string' && x.name.trim()) : []
   // Phase 3: avatar is null or { k: 'emoji' | 'img', v: string }. An uploaded image is a small data URL, so it syncs inside the same document.
   const av = o.avatar; o.avatar = av && typeof av === 'object' && (av.k === 'emoji' || av.k === 'img') && typeof av.v === 'string' && av.v.length < 120000 ? { k: av.k, v: av.v } : null
   o.seen = !!o.seen
+  o.cardStats = fixCard(o.cardStats)
   if (!THEMES.some((t) => t.id === o.theme)) o.theme = 'classic'
   if (!['light', 'dark', 'system'].includes(o.mode)) o.mode = 'dark'
   return o
@@ -109,16 +140,18 @@ const sample = () => ({
     { id: nid(), type: 'income', amount: 8000, category: 'Freelance', date: off(5), note: 'Logo project', wallet: 'w3' }
   ],
   debts: [
-    { id: nid(), kind: 'payable', cat: 'SPayLater', party: 'Phone installment', total: 4200.5, paid: 0, payments: [], due: off(8), wallet: 'w3' },
-    { id: nid(), kind: 'payable', cat: 'Tuition', party: '2nd semester balance', total: 40000, paid: 10000, payments: [{ id: nid(), amount: 10000, wallet: 'w2', date: off(-5) }], due: off(20), wallet: 'w2' },
-    { id: nid(), kind: 'receivable', cat: 'Allowance', party: 'Monthly allowance', total: 5000, paid: 0, payments: [], due: off(9), wallet: 'w2' }
+    { id: nid(), kind: 'payable', cat: 'Installments', party: 'Phone installment', total: 4200.5, paid: 0, payments: [], due: off(8), wallet: 'w3' },
+    { id: nid(), kind: 'payable', cat: 'School', party: '2nd semester balance', total: 40000, paid: 10000, payments: [{ id: nid(), amount: 10000, wallet: 'w2', date: off(-5) }], due: off(20), wallet: 'w2' },
+    { id: nid(), kind: 'receivable', cat: 'Family', party: 'Monthly allowance', total: 5000, paid: 0, payments: [], due: off(9), wallet: 'w2' }
   ],
   goals: [
     { id: nid(), name: 'Emergency Fund', target: 60000, saved: 22000 },
     { id: nid(), name: 'New Laptop', target: 45000, saved: 12500 },
     { id: nid(), name: 'Baguio Trip', target: 15000, saved: 9000 }
   ],
-  alloc: {}
+  alloc: {},
+  // Demo sources, so the demo Pending tab shows the same groups the demo payables use.
+  srcs: [{ kind: 'payable', name: 'Installments' }, { kind: 'payable', name: 'School' }, { kind: 'receivable', name: 'Family' }]
 })
 
 /* ---------- Money maths ---------- */
@@ -168,8 +201,8 @@ function Provider({ children }) {
 
   /* Appearance Engine: re-applies whenever mode / theme / accent change, and when the OS switches light/dark in System mode. */
   const ui = useMemo(() => {
-    const th = THEMES.find((t) => t.id === S.theme) || THEMES[0]
-    return { mode: S.mode, theme: th.id, accent: S.accent || th.a, dark: S.mode === 'system' ? sysDark : S.mode !== 'light' }
+    const th = THEMES.find((t) => t.id === S.theme) || THEMES[0], dark = S.mode === 'system' ? sysDark : S.mode !== 'light'
+    return { mode: S.mode, theme: th.id, accent: S.accent || accentOf(th, dark), dark }
   }, [S.mode, S.theme, S.accent, sysDark])
   useEffect(() => { applyAppearance(ui) }, [ui])
   useEffect(() => {
@@ -185,7 +218,7 @@ function Provider({ children }) {
   }
   const adopt = (d) => { const ns = fix(d.state); R.skip = true; R.t = d.t; R.sent = d.t; R.S = ns; ls.set(TK, String(d.t)); setS(ns); setSync('synced') }
   const wipeLocal = () => {
-    const keep = { mode: R.S.mode, theme: R.S.theme, accent: R.S.accent } // appearance survives logging out
+    const keep = { mode: R.S.mode, theme: R.S.theme, accent: R.S.accent, cardStats: R.S.cardStats } // appearance (and the card display settings) survive logging out
     const ns = { ...blank(), ...keep }
     R.skip = true; R.t = 0; R.sent = 0; R.ready = false; R.S = ns; setS(ns); ls.del(TK); ls.set(KEY, JSON.stringify(ns))
   }
@@ -275,7 +308,9 @@ function Provider({ children }) {
     addToGoal: (id, amt) => setS((s) => ({ ...s, goals: s.goals.map((g) => (g.id === id ? { ...g, saved: q(g.saved + amt) } : g)) })),
     // Data
     loadSample: () => setS((s) => ({ ...s, ...sample() })),
-    clearData: () => setS((s) => ({ ...s, ...dataBlank() }))
+    clearData: () => setS((s) => ({ ...s, ...dataBlank() })),
+    // Replaces the budget data with an already-validated backup (see io.js). Name, avatar and appearance are only replaced when the backup has them.
+    restoreData: (d) => setS((s) => ({ ...s, ...d }))
   }
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }

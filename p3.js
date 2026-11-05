@@ -94,7 +94,7 @@ function UpdatePrompt() {
   if (!w || hide) return null
   return (
     <div className="fixed left-1/2 -translate-x-1/2 z-[60] w-[min(94vw,26rem)] fade" style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }} role="status" aria-live="polite">
-      <div className="glass glass-strong backdrop-blur-xl !rounded-2xl flex items-center gap-3 p-3 pl-4" style={{ borderColor: 'rgb(var(--a) / .4)' }}>
+      <div className="glass glass-strong !rounded-2xl flex items-center gap-3 p-3 pl-4" style={{ borderColor: 'rgb(var(--a) / .4)' }}>
         <span className="grid place-items-center w-9 h-9 rounded-full bg-ac/15 text-ac shrink-0"><Ic n="refresh" s={17} cls={busy ? 'animate-spin' : ''} /></span>
         <div className="min-w-0 flex-1"><div className="text-sm font-semibold leading-tight">New version ready</div><div className="text-xs text-mu leading-tight mt-0.5">Update to get the latest improvements.</div></div>
         {!busy && <button className="btn !py-1.5 !px-3 !text-xs !bg-transparent !border-transparent text-mu" onClick={() => setHide(true)}>Later</button>}
@@ -299,7 +299,7 @@ function DeleteAccountSheet({ onClose, openSheet }) {
         <ul className="glass-tile p-3.5 space-y-2 text-sm text-mu">
           {['Your budget in the cloud: wallets, transactions, payables, receivables and goals', 'Your sign-in account (' + (user ? user.email : '') + ')', 'The copy saved on this device'].map((t) => <li key={t} className="flex gap-2"><Ic n="x" s={15} cls="shrink-0 mt-0.5 text-neg" />{t}</li>)}
         </ul>
-        <button type="button" className="btn w-full !py-2" onClick={() => { onClose(); openSheet({ k: 'report' }) }}><Ic n="dl" s={16} />Export my data first</button>
+        <button type="button" className="btn w-full !py-2" onClick={() => { onClose(); openSheet({ k: 'data' }) }}><Ic n="dl" s={16} />Export my data first</button>
         {needPw
           ? <Field label="Your password" hint="Confirms it is really you."><input className="field" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
           : <p className="text-xs text-mu">You signed in with Google. You will be asked to confirm with Google in a pop-up.</p>}
@@ -331,7 +331,7 @@ function ResetSheet({ onClose, openSheet }) {
           ? <p className="text-sm text-mu">Your cloud budget is <b className="text-fg font-semibold">not</b> deleted. It comes back when you log in.</p>
           : <p className="text-sm text-neg flex gap-2" role="alert"><Ic n="alert" s={18} cls="shrink-0 mt-0.5" />You are using Budgy on this device only, so your budget lives here and will be permanently lost. Export it first.</p>}
         {user && risky && <p className="text-sm text-neg flex gap-2" role="alert"><Ic n="alert" s={18} cls="shrink-0 mt-0.5" />Sync is not up to date right now. Changes that have not reached the cloud yet would be lost. Wait for the green “Synced” badge first.</p>}
-        {!user && <button className="btn w-full !py-2" onClick={() => { onClose(); openSheet({ k: 'report' }) }}><Ic n="dl" s={16} />Export my data first</button>}
+        {!user && <button className="btn w-full !py-2" onClick={() => { onClose(); openSheet({ k: 'data' }) }}><Ic n="dl" s={16} />Export my data first</button>}
         {(!user || risky) && <label className="flex items-start gap-2.5 text-sm"><input type="checkbox" className="mt-1" style={{ accentColor: 'rgb(var(--neg))' }} checked={sure} onChange={(e) => setSure(e.target.checked)} /><span>I understand and want to reset anyway.</span></label>}
         <div className="flex gap-2"><button className="btn flex-1" disabled={busy} onClick={onClose}>Cancel</button><button className="btn btn-d flex-1" disabled={busy || ((!user || risky) && !sure)} onClick={go}>{busy ? 'Resetting…' : 'Reset and reload'}</button></div>
       </div>
@@ -374,8 +374,8 @@ function Onboarding({ onClose }) {
   }, [i])
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Welcome guide">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm fade" onClick={done} />
-      <div className="sheet glass glass-strong backdrop-blur-xl relative w-full max-w-md !rounded-3xl p-6 max-h-[92dvh] overflow-y-auto">
+      <div className="absolute inset-0 bg-black/60 fade" onClick={done} />
+      <div className="sheet glass glass-strong relative w-full max-w-md !rounded-3xl p-6 max-h-[92dvh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div className="flex gap-1.5" aria-label={'Step ' + (i + 1) + ' of ' + steps.length}>{steps.map((_, n) => <button key={n} aria-label={'Go to step ' + (n + 1)} onClick={() => go(n)} className={'h-1.5 rounded-full transition-all ' + (n === i ? 'w-6 bg-ac' : 'w-1.5 bg-fg/25')} />)}</div>
           <button className="text-sm text-mu hover:text-fg" onClick={done}>{last ? 'Close' : 'Skip'}</button>

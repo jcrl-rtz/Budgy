@@ -1,4 +1,4 @@
-// Budgy service worker (Phase 3).
+// Budgy service worker (v5 Final).
 //
 // HOW UPDATES WORK
 //  1. Deploy new files and change VERSION below (any change to this file makes the browser treat it as a new worker).
@@ -7,8 +7,8 @@
 //  3. The new worker installs and then WAITS (it does not take over mid-session). The app shows an "Update Now" prompt.
 //  4. Update Now posts { type: 'SKIP_WAITING' } to the waiting worker. It activates, the page sees `controllerchange`, and reloads.
 // Nobody ever has to remove the app from the home screen to get an update.
-const VERSION = 'budgy-p3-v1';
-const CORE = ['./', 'index.html', 'core.js', 'ui.js', 'pages.js', 'p2.js', 'p3.js', 'app.js', 'firebase.js', 'manifest.json',
+const VERSION = 'budgy-v5-final-1';
+const CORE = ['./', 'index.html', 'core.js', 'ui.js', 'pages.js', 'p2.js', 'p3.js', 'io.js', 'receipt.js', 'shortcuts.js', 'app.js', 'firebase.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
 // Pinned CDN files and fonts are cached after first load so the app opens offline. Live Firebase traffic is never cached.
 const CDN = /^(cdn\.jsdelivr\.net|cdn\.tailwindcss\.com|www\.gstatic\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)$/;

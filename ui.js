@@ -1,6 +1,6 @@
 /* =====================================================================
-   ui.js  (Phase 1)
-   Icons, Liquid Glass primitives, bottom sheets / dialogs and the sign-in screen.
+   ui.js  (Phase 1 of v3)
+   Icons, Material surface primitives, bottom sheets / dialogs and the sign-in screen.
    ===================================================================== */
 
 /* ---------- Icons (24px stroke icons) ---------- */
@@ -49,10 +49,36 @@ const GoogleG = () => (
 const WTYPES = { Cash: { icon: 'cash', plural: 'Cash' }, Bank: { icon: 'bank', plural: 'Banks' }, 'E-Wallet': { icon: 'phone', plural: 'E-Wallets' } }
 const WORDER = ['Cash', 'Bank', 'E-Wallet']
 
-/* ---------- Liquid Glass primitives ---------- */
-// Translucent card. backdrop-blur-md blurs the aurora behind it; `i` staggers the entrance animation.
+/* ---------- Brand badge ---------- */
+// Budgy mark: a glossy accent-coloured badge with a bevelled white "b". Follows the accent colour live (same look as the PNG app icons).
+function BrandMark({ size = 40, className = '' }) {
+  const id = 'bm' + React.useId().replace(/[^a-zA-Z0-9]/g, '')
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} className={'shrink-0 ' + className} style={{ filter: 'drop-shadow(0 6px 10px rgb(var(--a) / .38)) drop-shadow(0 1px 2px rgb(0 0 0 / .3))' }} aria-hidden="true">
+      <defs>
+        <linearGradient id={id + 's'} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".26" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".36" /></linearGradient>
+        <linearGradient id={id + 'g'} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".42" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <linearGradient id={id + 'w'} gradientUnits="userSpaceOnUse" x1="0" y1="12" x2="0" y2="50"><stop offset="0" stopColor="#fff" /><stop offset="1" stopColor="#ffd6e0" /></linearGradient>
+        <clipPath id={id + 'c'}><rect width="64" height="64" rx="14.4" /></clipPath>
+        <filter id={id + 'd'} x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.4" floodColor="#3b0010" floodOpacity=".42" /></filter>
+      </defs>
+      <rect width="64" height="64" rx="14.4" fill="rgb(var(--a))" />
+      <rect width="64" height="64" rx="14.4" fill={'url(#' + id + 's)'} />
+      <g clipPath={'url(#' + id + 'c)'}><ellipse cx="26" cy="-14" rx="52" ry="40" fill={'url(#' + id + 'g)'} opacity=".7" /></g>
+      <rect x=".5" y=".5" width="63" height="63" rx="13.9" fill="none" stroke="#fff" strokeOpacity=".24" />
+      <g filter={'url(#' + id + 'd)'}>
+        <g transform="translate(0 -.4)" fill="#fff" stroke="#fff"><rect x="21.1" y="12.8" width="6.4" height="37.1" rx="3.2" stroke="none" /><circle cx="33.9" cy="37.1" r="9.6" fill="none" strokeWidth="6.4" /></g>
+        <g fill={'url(#' + id + 'w)'} stroke={'url(#' + id + 'w)'}><rect x="21.1" y="12.8" width="6.4" height="37.1" rx="3.2" stroke="none" /><circle cx="33.9" cy="37.1" r="9.6" fill="none" strokeWidth="6.4" /></g>
+      </g>
+    </svg>
+  )
+}
+
+/* ---------- Surface primitives ---------- */
+// Material card: tonal gradient surface, elevation shadow and (in the leather themes) grain + stitching. `i` staggers the entrance animation.
+// The class is still called `glass` so every existing screen picks up the new look without changes.
 const Glass = ({ className = '', i = 0, style, children, as: T = 'div', ...rest }) => (
-  <T className={'glass backdrop-blur-md backdrop-saturate-150 rise ' + className} style={{ animationDelay: i * 60 + 'ms', ...style }} {...rest}>{children}</T>
+  <T className={'glass stitch rise ' + className} style={{ animationDelay: i * 60 + 'ms', ...style }} {...rest}>{children}</T>
 )
 const Bar = ({ pct, gray, lg }) => <div className={'bar ' + (gray ? 'gray ' : '') + (lg ? 'lg' : '')}><i style={{ width: Math.min(100, Math.max(0, pct || 0)) + '%' }} /></div>
 
@@ -105,8 +131,9 @@ function Sheet({ title, onClose, children }) {
   }, [])
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-6" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm fade" onClick={onClose} />
-      <div className="sheet glass glass-strong backdrop-blur-xl relative w-full md:max-w-md rounded-b-none md:!rounded-3xl !rounded-t-3xl p-5 max-h-[90dvh] overflow-y-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
+      <div className="scrim absolute inset-0 bg-black/50 fade" onClick={onClose} />
+      <div className="sheet glass glass-strong stitch relative w-full md:max-w-md rounded-b-none md:!rounded-3xl !rounded-t-[1.75rem] p-5 max-h-[90dvh] overflow-y-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
+        <div className="md:hidden mx-auto -mt-1 mb-3 h-1 w-10 rounded-full bg-fg/25" aria-hidden="true" />
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button className="btn btn-i" onClick={onClose} aria-label="Close"><Ic n="x" s={16} /></button>
@@ -203,7 +230,7 @@ function Auth() {
   return (
     <div className="min-h-dvh flex items-center justify-center p-5">
       <Glass className="w-full max-w-sm p-6 space-y-3.5" style={{ borderRadius: '1.75rem' }}>
-        <div className="flex items-center gap-3 mb-1"><img src="./icons/icon-192.png" alt="" className="w-11 h-11 rounded-2xl" /><div><div className="text-2xl font-bold tracking-tight leading-none">Budgy</div><div className="text-xs text-mu mt-1">Your money, clearly.</div></div></div>
+        <div className="flex items-center gap-3 mb-1"><BrandMark size={46} /><div><div className="text-2xl font-bold tracking-tight leading-none">Budgy</div><div className="text-xs text-mu mt-1">Your money, clearly.</div></div></div>
         <div className="glass-tile p-1 grid grid-cols-2 gap-1" role="tablist">
           {[['login', 'Log in'], ['signup', 'Sign up']].map(([k, l]) => <button key={k} role="tab" aria-selected={mode === k} onClick={() => { setMode(k); setM({ t: '' }) }} className={'btn !border-transparent ' + (mode === k ? 'btn-p' : '!bg-transparent')}>{l}</button>)}
         </div>

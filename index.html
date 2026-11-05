@@ -2,7 +2,7 @@
 <html lang="en" class="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Budgy</title>
 <meta name="description" content="Personal budget tracker with wallets, payables, receivables, savings and smart allocation.">
 <meta name="theme-color" content="#09090b">
@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Budgy">
 
-<!-- Apply the saved light/dark mode before first paint so there is no flash. The Appearance Engine in core.js takes over once React starts. -->
+<!-- Apply the saved light/dark mode and solid background before first paint so there is no flash. The Appearance Engine in core.js takes over once React starts. -->
 <script>
 try {
   var u = JSON.parse(localStorage.getItem('budgy.ui') || '{}'), m = u.mode || 'dark', r = document.documentElement;
@@ -26,7 +26,7 @@ try {
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <!-- Tailwind (Play CDN, pinned) -->
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
@@ -34,8 +34,11 @@ try {
 tailwind.config = {
   darkMode: 'class',
   theme: {
+    // "rail" is the point where the floating bottom bar turns into a side rail (small tablets, landscape phones, desktops).
+    // It sits between sm and md, so it is listed here in order (this replaces the default screens; the other values are unchanged).
+    screens: { sm: '640px', rail: '700px', md: '768px', lg: '1024px', xl: '1280px', '2xl': '1536px' },
     extend: {
-      fontFamily: { sans: ['Sora', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
+      fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
       // Every colour is a CSS variable holding an "r g b" triplet, so the Appearance Engine can retheme the whole app live.
       colors: {
         ac:   'rgb(var(--a) / <alpha-value>)',
@@ -54,88 +57,241 @@ tailwind.config = {
 </script>
 
 <style>
-/* ---------- Theme tokens (defaults = Classic). core.js overwrites these at runtime. ---------- */
+/* =====================================================================
+   Budgy design system (v5 Phase 1): glass + soft depth
+   - Frosted glass surfaces (backdrop-filter blur 16px) floating over a static accent-tinted ambient backdrop.
+   - Multi-layer soft shadows (levels 1 to 3), large curved corners, pill buttons, solid accent fills.
+   - Motion is GPU-composited (transform + opacity only) with spring-like cubic-bezier easing.
+   - core.js (Appearance Engine) overwrites the colour variables in this block at runtime.
+   - The Net Worth credit card section further down is intentionally untouched.
+   ===================================================================== */
 :root {
   --bg: 9 9 11; --s1: 17 17 19; --s2: 26 26 29; --bd: 39 39 42;
   --fg: 250 250 250; --mu: 161 161 170;
   --a: 225 29 72; --on-a: 255 255 255;
   --pos: 52 211 153; --neg: 251 113 133;
+  /* Look tokens (set by core.js). Flat by default; the Net Worth card still reads --grain and --stitch*. */
+  --page: none;
+  --card-grad: none;
+  --hero-grad: linear-gradient(rgb(225 29 72 / .14), rgb(225 29 72 / .14)); /* one flat accent tint, not a gradient */
+  --grain: none;
+  --stitch: 255 255 255; --stitch-a: 0;
+  --s1-a: 1; --s2-a: 1;
+  --edge: 0 0 0 0 transparent;
+  /* Glass surface opacity + elevation 1 to 3: layered soft shadows with a 1px inner top highlight. */
+  --gl: .62; --gl-strong: .8;
+  --e1: 0 1px 1px rgb(0 0 0 / .14), 0 3px 6px -1px rgb(0 0 0 / .16), 0 10px 20px -6px rgb(0 0 0 / .26), inset 0 1px 0 rgb(255 255 255 / .07);
+  --e2: 0 1px 2px rgb(0 0 0 / .16), 0 4px 8px -2px rgb(0 0 0 / .20), 0 14px 26px -8px rgb(0 0 0 / .32), 0 28px 44px -20px rgb(0 0 0 / .34), inset 0 1px 0 rgb(255 255 255 / .09);
+  --e3: 0 2px 3px rgb(0 0 0 / .18), 0 8px 14px -3px rgb(0 0 0 / .26), 0 22px 36px -10px rgb(0 0 0 / .42), 0 36px 60px -26px rgb(var(--a) / .35), inset 0 1px 0 rgb(255 255 255 / .12);
+  --sheen: rgb(255 255 255 / .07);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.32, .72, 0, 1);
+  /* Level 4 is kept exactly as before because the Net Worth card's drop shadow is built on it. */
+  --e4: 0 20px 44px -10px rgb(0 0 0 / .6), 0 8px 16px -4px rgb(0 0 0 / .35);
   color-scheme: dark;
 }
 html.light {
   --bg: 246 246 247; --s1: 255 255 255; --s2: 240 240 242; --bd: 228 228 231;
   --fg: 24 24 27; --mu: 82 82 91;
   --pos: 4 120 87; --neg: 220 38 38;
+  --gl: .72; --gl-strong: .86;
+  --e1: 0 1px 1px rgb(30 41 59 / .06), 0 3px 6px -1px rgb(30 41 59 / .08), 0 10px 20px -6px rgb(30 41 59 / .14), inset 0 1px 0 rgb(255 255 255 / .9);
+  --e2: 0 1px 2px rgb(30 41 59 / .08), 0 4px 8px -2px rgb(30 41 59 / .10), 0 14px 26px -8px rgb(30 41 59 / .18), 0 28px 44px -20px rgb(30 41 59 / .20), inset 0 1px 0 rgb(255 255 255 / .95);
+  --e3: 0 2px 3px rgb(30 41 59 / .10), 0 8px 14px -3px rgb(30 41 59 / .14), 0 22px 36px -10px rgb(30 41 59 / .24), 0 36px 60px -26px rgb(var(--a) / .35), inset 0 1px 0 rgb(255 255 255 / .35);
+  --sheen: rgb(255 255 255 / .55);
+  --e4: 0 20px 44px -10px rgb(30 41 59 / .34), 0 8px 16px -4px rgb(30 41 59 / .16);
   color-scheme: light;
 }
 
 html { -webkit-text-size-adjust: 100%; background: rgb(var(--bg)); }
 html, body, #root { min-height: 100%; }
 body {
-  margin: 0; color: rgb(var(--fg)); font-family: Sora, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; overflow-x: hidden;
+  margin: 0; color: rgb(var(--fg)); font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; overflow-x: hidden;
+  letter-spacing: -.011em; font-feature-settings: 'kern' 1, 'calt' 1; touch-action: manipulation; -webkit-touch-callout: none;
 }
+/* Money and figures: lining, equal-width digits so columns and cards line up to the pixel. */
+.tabular-nums, .nc-bal, .nc-st-v, [class*="tabular"] { font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'tnum' 1, 'lnum' 1, 'kern' 1; letter-spacing: -.02em; }
+h1, h2, h3 { letter-spacing: -.025em; }
+button, a, [role=button], select, label { touch-action: manipulation; }
+img, svg { -webkit-user-drag: none; }
 
-/* ---------- Liquid Glass ---------- */
-/* Aurora: soft, slowly drifting colour blobs that tint with the accent. The glass cards blur whatever is behind them. */
-.aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.aurora i { position: absolute; border-radius: 9999px; background: rgb(var(--a)); opacity: .34; filter: blur(80px); will-change: transform; animation: drift 26s ease-in-out infinite; }
-.aurora .b1 { width: 60vmax; height: 60vmax; top: -24vmax; right: -18vmax; }
-.aurora .b2 { width: 55vmax; height: 55vmax; bottom: -26vmax; left: -18vmax; filter: blur(90px) hue-rotate(70deg); opacity: .26; animation-delay: -9s; }
-.aurora .b3 { width: 38vmax; height: 38vmax; top: 38%; left: 42%; filter: blur(90px) hue-rotate(-55deg); opacity: .16; animation-delay: -16s; }
-html.light .aurora i { opacity: .30; }
-html.light .aurora .b2 { opacity: .22; }
-html.light .aurora .b3 { opacity: .14; }
-@keyframes drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(-4vmax,5vmax,0) scale(1.08); } }
+/* ---------- Page backdrop ---------- */
+/* One solid colour. */
+.canvas { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-color: rgb(var(--bg)); overflow: hidden; }
+/* Static accent-tinted light pools: they give the frosted glass something to blur. No animation, so no battery cost. */
+.canvas::before { content: ''; position: absolute; inset: -12%; transform: translateZ(0);
+  background:
+    radial-gradient(46% 34% at 10% 4%, rgb(var(--a) / .24), transparent 72%),
+    radial-gradient(40% 30% at 96% 34%, rgb(var(--a) / .13), transparent 74%),
+    radial-gradient(52% 38% at 28% 100%, rgb(var(--a) / .16), transparent 72%); }
+html.light .canvas::before { opacity: .55; }
 
-/* Translucent surface. The blur itself comes from Tailwind's backdrop-blur-md on each element. */
-.glass {
-  background: rgb(var(--s1) / .52);
-  border: 1px solid rgb(var(--fg) / .10);
-  border-radius: 1.25rem;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), inset 0 0 0 1px rgb(255 255 255 / .03), 0 12px 32px -14px rgb(0 0 0 / .55);
+/* ---------- Status-bar guard ---------- */
+/* On iPhones in standalone mode the page draws under the clock and notch. This solid strip sits over that area once the page scrolls.
+   It has zero height where there is no notch. */
+.safe-top { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); z-index: 45; pointer-events: none; background: rgb(var(--bg)); opacity: 0; transition: opacity .2s; }
+.safe-top.on { opacity: 1; }
+
+/* ---------- Surfaces ---------- */
+/* Glass: translucent tonal fill + soft top sheen + 16px backdrop blur + layered shadow. */
+.glass, .navbar, .rail-surface {
+  background-color: rgb(var(--s1) / var(--gl));
+  background-image: linear-gradient(165deg, var(--sheen) 0%, rgb(255 255 255 / 0) 46%);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgb(var(--fg) / .09);
+  box-shadow: var(--e1);
 }
-html.light .glass { background: rgb(var(--s1) / .62); box-shadow: inset 0 1px 0 rgb(255 255 255 / .9), 0 12px 32px -16px rgb(30 41 59 / .28); }
-.glass-strong { background: rgb(var(--s1) / .84); }
-html.light .glass-strong { background: rgb(var(--s1) / .90); }
-.glass-tile { background: rgb(var(--fg) / .05); border: 1px solid rgb(var(--fg) / .08); border-radius: 1rem; }
+.glass { border-radius: 1.75rem; transform: translateZ(0); }
+.glass-strong { background-color: rgb(var(--s1) / var(--gl-strong)); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: var(--e3); }
+.navbar { box-shadow: var(--e2); border-radius: 1.75rem; will-change: transform; } /* no transform here: the bar is centred with Tailwind's -translate-x-1/2 */
+.rail-surface { border-width: 0 1px 0 0; border-radius: 0; box-shadow: none; }
+/* Hero card: the same glass plus one flat accent tint layer */
+.hero { background-image: var(--hero-grad); border-color: rgb(var(--a) / .3); box-shadow: var(--e1); }
+/* Tonal tile (a smaller container inside a card): recessed, softly curved */
+.glass-tile { background-color: rgb(var(--s2) / .62); border: 1px solid rgb(var(--fg) / .07); border-radius: 1.25rem; box-shadow: inset 0 1px 2px rgb(0 0 0 / .14), inset 0 -1px 0 rgb(255 255 255 / .04); }
+html.light .glass-tile { box-shadow: inset 0 1px 2px rgb(30 41 59 / .07), inset 0 -1px 0 rgb(255 255 255 / .8); }
+/* Kept as a hook for existing markup; it no longer draws stitching. */
+.stitch { position: relative; }
+/* Dimmed, softly blurred layer behind sheets and dialogs */
+.scrim { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); will-change: opacity; }
+/* Browsers without backdrop-filter get solid tonal surfaces instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .navbar, .rail-surface, .glass-strong { background-color: rgb(var(--s1)); }
+}
 
 /* ---------- Controls ---------- */
 .field {
   width: 100%; border-radius: 1rem; padding: .78rem 1rem; color: inherit; outline: none; font-size: 16px;
-  background: rgb(var(--fg) / .06); border: 1px solid rgb(var(--fg) / .12); transition: border-color .15s, box-shadow .15s;
+  background: rgb(var(--s2) / .7); border: 1px solid rgb(var(--bd)); box-shadow: inset 0 1px 2px rgb(0 0 0 / .12); transition: border-color .2s var(--ease-out), box-shadow .2s var(--ease-out);
 }
-.field:focus { border-color: rgb(var(--a)); box-shadow: 0 0 0 3px rgb(var(--a) / .22); }
+.field:focus { border-color: rgb(var(--a)); box-shadow: 0 0 0 1px rgb(var(--a)); }
 .field::placeholder { color: rgb(var(--mu) / .7); }
 .field option { background: rgb(var(--s1)); color: rgb(var(--fg)); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .4rem; border-radius: 999px; padding: .65rem 1.1rem;
   font-weight: 600; font-size: .875rem; cursor: pointer; color: rgb(var(--fg));
-  background: rgb(var(--fg) / .08); border: 1px solid rgb(var(--fg) / .10); transition: transform .15s, opacity .15s, background .15s;
+  background: rgb(var(--s2) / .75); border: 1px solid rgb(var(--bd)); box-shadow: 0 1px 2px rgb(0 0 0 / .14), inset 0 1px 0 rgb(255 255 255 / .06); transition: transform .22s var(--ease-out), filter .2s, background .2s; will-change: transform; -webkit-user-select: none; user-select: none;
 }
-.btn:hover { background: rgb(var(--fg) / .13); }
-.btn:active { transform: scale(.96); }
+.btn:hover { filter: brightness(1.1); }
+.btn:active { transform: scale(.97); }
 .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-.btn-p { background: rgb(var(--a)); color: rgb(var(--on-a)); border-color: transparent; box-shadow: 0 8px 22px -10px rgb(var(--a) / .9); }
-.btn-p:hover { background: rgb(var(--a)); filter: brightness(1.08); }
-.btn-d { background: rgb(var(--neg) / .14); color: rgb(var(--neg)); border-color: rgb(var(--neg) / .25); }
+.btn-p { background-color: rgb(var(--a)); background-image: linear-gradient(180deg, rgb(255 255 255 / .2), rgb(255 255 255 / 0) 55%); color: rgb(var(--on-a)); border-color: transparent; box-shadow: 0 6px 14px -4px rgb(var(--a) / .55), inset 0 1px 0 rgb(255 255 255 / .3); }
+.btn-p:hover { filter: brightness(1.07); }
+.btn-d { background: rgb(var(--neg) / .14); color: rgb(var(--neg)); border-color: rgb(var(--neg) / .28); }
 .btn-d:hover { background: rgb(var(--neg) / .22); }
 .btn-i { padding: .5rem; width: 2.25rem; height: 2.25rem; }
 button:focus-visible, a:focus-visible, .field:focus-visible { outline: 2px solid rgb(var(--a)); outline-offset: 2px; }
 
-.bar { height: .5rem; border-radius: 999px; background: rgb(var(--fg) / .10); overflow: hidden; }
-.bar > i { display: block; height: 100%; border-radius: 999px; background: rgb(var(--a)); transition: width .7s cubic-bezier(.2,.8,.2,1); }
-.bar.gray > i { background: rgb(var(--fg) / .45); }
+/* Floating action button (Material "large rounded square"): solid accent, neutral level-3 shadow */
+.fab {
+  display: grid; place-items: center; background-color: rgb(var(--a)); color: rgb(var(--on-a));
+  border-radius: 1.5rem; cursor: pointer; border: 0; transition: transform .22s var(--ease-out), filter .2s; box-shadow: var(--e3); transform: translateZ(0); will-change: transform;
+  background-image: linear-gradient(160deg, rgb(255 255 255 / .28), rgb(255 255 255 / 0) 50%, rgb(0 0 0 / .14));
+}
+.fab:hover { filter: brightness(1.07); }
+.fab:active { transform: translateZ(0) scale(.94); }
+
+.bar { height: .5rem; border-radius: 999px; background: rgb(var(--fg) / .1); box-shadow: inset 0 1px 2px rgb(0 0 0 / .18); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 999px; background-color: rgb(var(--a)); background-image: linear-gradient(180deg, rgb(255 255 255 / .28), rgb(255 255 255 / 0)); transition: width .7s var(--ease-out); }
+.bar.gray > i { background-color: rgb(var(--fg) / .45); }
 .bar.lg { height: .75rem; }
 
+/* ---------- Net Worth credit card (Phase 2A) ---------- */
+/* A physical-card look: deep accent-tinted body, guilloche lines, holographic foil, gold EMV chip, sweeping sheen and a pointer-driven glare.
+   The body always stays dark so the white card text keeps its contrast in every theme and in light mode. Leather themes add grain + stitching. */
+.ncard-wrap { perspective: 1100px; }
+.ncard {
+  --rx: 0deg; --ry: 0deg; --gx: 30%; --gy: 0%;
+  position: relative; width: 100%; aspect-ratio: 1.586 / 1; border-radius: 1.5rem; overflow: hidden; isolation: isolate; container-type: inline-size;
+  color: #fff; transform: rotateX(var(--rx)) rotateY(var(--ry)); transform-style: preserve-3d; transition: transform .35s cubic-bezier(.2,.8,.2,1);
+  background-color: #14121a;
+  background-color: color-mix(in srgb, rgb(var(--a)) 30%, #08080d);
+  background-image:
+    radial-gradient(120% 95% at 100% -5%, rgb(var(--a) / .62), rgb(var(--a) / 0) 58%),
+    radial-gradient(95% 85% at -8% 108%, rgb(var(--a) / .34), rgb(var(--a) / 0) 62%),
+    linear-gradient(135deg, rgb(255 255 255 / .16) 0%, rgb(255 255 255 / 0) 38%, rgb(0 0 0 / .42) 100%);
+  border: 1px solid rgb(255 255 255 / .16);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), inset 0 -18px 30px -18px rgb(0 0 0 / .6), 0 26px 44px -20px rgb(var(--a) / .55), var(--e4);
+}
+.ncard.live { transition: transform .08s linear; }
+.ncard > i, .ncard > b { position: absolute; inset: 0; pointer-events: none; display: block; }
+.nc-guil { background-image: repeating-radial-gradient(circle at 88% 6%, rgb(255 255 255 / .07) 0 1px, transparent 1px 8px), repeating-radial-gradient(circle at 6% 104%, rgb(255 255 255 / .05) 0 1px, transparent 1px 10px); -webkit-mask-image: linear-gradient(160deg, #000 10%, transparent 80%); mask-image: linear-gradient(160deg, #000 10%, transparent 80%); }
+.nc-ring { background: radial-gradient(circle at 86% 14%, transparent 0 21%, rgb(255 255 255 / .09) 21.4% 22.6%, transparent 23% 33%, rgb(255 255 255 / .06) 33.4% 34.4%, transparent 35%); }
+.nc-holo { background: conic-gradient(from 200deg at 82% 18%, #ff7ab8, #ffd36b, #7bffcf, #6bb7ff, #c58bff, #ff7ab8); mix-blend-mode: soft-light; opacity: .3; -webkit-mask-image: radial-gradient(60% 70% at 82% 18%, #000 0%, transparent 72%); mask-image: radial-gradient(60% 70% at 82% 18%, #000 0%, transparent 72%); }
+.nc-grain { background-image: var(--grain); background-size: 220px 220px; mix-blend-mode: soft-light; opacity: .9; }
+.nc-stitch { inset: 7px !important; border-radius: calc(1.5rem - 8px); border: 1.5px dashed rgb(var(--stitch) / var(--stitch-a)); }
+.nc-sheen { background: linear-gradient(115deg, transparent 34%, rgb(255 255 255 / .2) 47%, rgb(255 255 255 / .06) 53%, transparent 64%); transform: translateX(-130%); animation: ncsheen 7.5s ease-in-out 1.4s infinite; }
+.nc-glare { background: radial-gradient(circle at var(--gx) var(--gy), rgb(255 255 255 / .3), rgb(255 255 255 / 0) 46%); opacity: 0; transition: opacity .25s; }
+.ncard.live .nc-glare { opacity: 1; }
+@keyframes ncsheen { 0%, 62% { transform: translateX(-130%); } 100% { transform: translateX(130%); } }
+.nc-body { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.25rem; padding: 6cqw; z-index: 2; }
+.nc-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.nc-brand { display: flex; align-items: center; gap: .4rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; font-size: 10px; font-size: clamp(9px, 3.1cqw, 13px); text-shadow: 0 1px 2px rgb(0 0 0 / .4); }
+.nc-brand span { display: grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 999px; background: rgb(255 255 255 / .16); border: 1px solid rgb(255 255 255 / .22); }
+.nc-label { font-size: 10px; font-size: clamp(9px, 2.8cqw, 12px); letter-spacing: .18em; text-transform: uppercase; color: rgb(255 255 255 / .72); text-shadow: 0 1px 2px rgb(0 0 0 / .45); }
+.nc-bal { font-weight: 600; letter-spacing: -.02em; line-height: 1.08; font-size: 28px; font-size: clamp(24px, 9.2cqw, 44px); font-variant-numeric: tabular-nums; margin-top: .15em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background-image: linear-gradient(180deg, #fff 30%, rgb(255 255 255 / .78)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 2px 3px rgb(0 0 0 / .45)); }
+.nc-bal.neg { background-image: linear-gradient(180deg, #ffd5db 30%, #ff9aa8); }
+.nc-num { font-size: 12px; font-size: clamp(11px, 3.7cqw, 16px); letter-spacing: .2em; color: rgb(255 255 255 / .82); text-shadow: 0 1px 2px rgb(0 0 0 / .5); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nc-meta { font-size: 9px; font-size: clamp(8px, 2.4cqw, 11px); letter-spacing: .14em; text-transform: uppercase; color: rgb(255 255 255 / .6); }
+.nc-val { font-size: 12px; font-size: clamp(11px, 3.4cqw, 15px); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-shadow: 0 1px 2px rgb(0 0 0 / .5); }
+.nc-eye { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; color: #fff; cursor: pointer; background: rgb(255 255 255 / .14); border: 1px solid rgb(255 255 255 / .22); transition: background .15s, transform .15s; }
+.nc-eye:hover { background: rgb(255 255 255 / .24); }
+.nc-eye:active { transform: scale(.9); }
+.nc-net { display: flex; align-items: center; }
+.nc-net i { display: block; width: 2.1em; height: 2.1em; border-radius: 999px; }
+.nc-net i:first-child { background: rgb(var(--a)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .45); }
+.nc-net i:last-child { margin-left: -.8em; background: rgb(255 255 255 / .78); mix-blend-mode: screen; }
+.nc-net { font-size: 12px; font-size: clamp(11px, 3.7cqw, 16px); }
+.nc-chip { filter: drop-shadow(0 2px 3px rgb(0 0 0 / .4)); width: 2.6rem; width: clamp(38px, 13cqw, 58px); height: auto; }
+.nc-nfc { color: rgb(255 255 255 / .85); width: 1.5rem; width: clamp(20px, 7cqw, 30px); height: auto; }
+/* v4 Phase 2: gear + eye tools and the customizable figure strip inside the card.
+   The strip replaces the dotted card number. With 1 to 4 figures the card gets a slightly taller card shape (1.42:1 instead of 1.586:1) so the
+   rows keep breathing room; with none it is the original card. Text sizes use container units, so it scales with the card on every screen. */
+.nc-tools { display: flex; align-items: center; gap: .4rem; }
+.nc-tools .nc-eye { width: 1.75rem; height: 1.75rem; width: clamp(26px, 8cqw, 34px); height: clamp(26px, 8cqw, 34px); }
+.ncard:not(.live) { transition: transform .35s cubic-bezier(.2,.8,.2,1), aspect-ratio .3s ease; }
+.ncard.has-stats { aspect-ratio: 1.42 / 1; }
+.ncard.has-stats .nc-chip { width: 2.4rem; width: clamp(34px, 11cqw, 52px); }
+.nc-label { line-height: 1.2; }
+.nc-meta, .nc-val, .nc-num { line-height: 1.25; }
+.nc-mid { display: flex; align-items: flex-end; min-width: 0; }
+.nc-mid > * { flex: 1 1 auto; min-width: 0; }
+.ncard.has-stats .nc-mid { min-height: 9cqw; }
+.nc-stats { display: grid; align-items: end; width: 100%; }
+.nc-st { min-width: 0; padding-left: 3cqw; border-left: 1px solid rgb(255 255 255 / .16); }
+.nc-st:first-child { padding-left: 0; border-left: 0; }
+.nc-st-l, .nc-st-v { line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgb(0 0 0 / .5); }
+.nc-st-l { font-size: 8px; font-size: clamp(7.5px, 2.15cqw, 10.5px); letter-spacing: .1em; text-transform: uppercase; color: rgb(255 255 255 / .62); }
+.nc-st-v { margin-top: .1em; font-size: 11px; font-size: clamp(10.5px, 3.5cqw, 16px); font-weight: 600; font-variant-numeric: tabular-nums; }
+.nc-st-v.neg { color: #ffb3be; }
+.nc-stats[data-n="1"] .nc-st-l { font-size: clamp(8px, 2.5cqw, 11.5px); letter-spacing: .16em; }
+.nc-stats[data-n="1"] .nc-st-v { font-size: clamp(15px, 5cqw, 24px); }
+.nc-stats[data-n="2"] .nc-st-l { font-size: clamp(8px, 2.35cqw, 11px); letter-spacing: .14em; }
+.nc-stats[data-n="2"] .nc-st-v { font-size: clamp(12px, 4.1cqw, 19px); }
+.nc-stats[data-n="4"] .nc-st { padding-left: 1.9cqw; }
+.nc-stats[data-n] .nc-st:first-child { padding-left: 0; }
+.nc-stats[data-n="4"] .nc-st-l { font-size: clamp(7px, 2.05cqw, 10px); letter-spacing: .03em; }
+@media (prefers-reduced-motion: reduce) { .ncard:not(.live) { transition: none; } }
+/* Statement strip beside / below the card */
+.nc-bar { display: flex; height: .6rem; border-radius: 999px; overflow: hidden; background: rgb(var(--fg) / .12); box-shadow: inset 0 1px 2px rgb(0 0 0 / .2); }
+.nc-bar > i { display: block; height: 100%; transition: width .7s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion: reduce) { .ncard { transition: none; transform: none !important; } .nc-sheen { animation: none; opacity: 0; } .nc-bar > i { transition: none; } }
+
 /* ---------- Motion ---------- */
-.rise { animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
-.sheet { animation: sheet .28s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes sheet { from { opacity: 0; transform: translateY(36px) scale(.98); } }
-.fade { animation: fade .2s ease-out both; }
+/* Only transform + opacity are animated, so everything stays on the GPU compositor. */
+.rise { animation: rise .5s var(--ease-out) both; will-change: transform, opacity; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.rise:not(.ncard-wrap) { transform: translateZ(0); }
+@keyframes rise { from { opacity: 0; transform: translate3d(0, 14px, 0); } }
+.sheet { animation: sheet .42s var(--ease-spring) both; will-change: transform, opacity; transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+@keyframes sheet { from { opacity: 0; transform: translate3d(0, 44px, 0) scale(.985); } }
+.fade { animation: fade .24s ease-out both; will-change: opacity; }
 @keyframes fade { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .aurora i, .rise, .sheet, .fade { animation: none !important; } .bar > i { transition: none; } }
+/* Tab switch: a short fade with a small lift. Used by the page wrapper in app.js. */
+.page-in { animation: pagein .34s var(--ease-out) both; will-change: transform, opacity; transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+@keyframes pagein { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
+@media (prefers-reduced-motion: reduce) { .rise, .sheet, .fade, .page-in { animation: none !important; } .bar > i, .safe-top, .btn, .fab { transition: none; } }
 
 /* ---------- Misc ---------- */
 .tabular-nums { font-variant-numeric: tabular-nums; }
@@ -147,9 +303,9 @@ input[type=color]::-webkit-color-swatch { border: 1px solid rgb(var(--fg) / .2);
 #boot { min-height: 100dvh; display: grid; place-items: center; }
 #boot span { width: .8rem; height: .8rem; border-radius: 999px; background: rgb(var(--a)); animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { transform: scale(1.8); opacity: .4; } }
-/* ---------- Phase 2 ---------- */
 /* Every text-like input is at least 16px so iOS never zooms in on focus. */
 input:not([type=range]):not([type=color]):not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px !important; }
+input, select, textarea { touch-action: manipulation; }
 input[type=range] { width: 100%; height: 1.75rem; accent-color: rgb(var(--a)); background: transparent; }
 select.field { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, rgb(var(--mu)) 50%), linear-gradient(135deg, rgb(var(--mu)) 50%, transparent 50%); background-position: calc(100% - 20px) 55%, calc(100% - 14px) 55%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 2.2rem; }
 .chips { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; max-width: 100%; }
@@ -158,11 +314,28 @@ select.field { appearance: none; -webkit-appearance: none; background-image: lin
 main { max-width: 100%; }
 main > div, main section { min-width: 0; }
 .glass, .glass-tile { min-width: 0; }
-@media (min-width: 768px) and (max-width: 1100px) { main { padding-left: 1.5rem; padding-right: 1.5rem; } }
+@media (min-width: 700px) and (max-width: 1100px) { main { padding-left: 1.5rem; padding-right: 1.5rem; } }
+
+/* ---------- v5 final polish: smooth on every device size ---------- */
+html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+#root { min-height: 100dvh; }
+/* Sheets and pages never exceed the visible screen (dvh follows the mobile URL bar) and respect notches / home indicator. */
+.sheet { max-height: 92dvh; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+.scrim { overscroll-behavior: contain; touch-action: none; }
+/* Cards and tabs: isolate paint so one card animating never repaints its neighbours. */
+.glass, .glass-tile { contain: layout style; }
+.page-in, .rise, .sheet { contain: paint; }
+/* Fewer GPU layers while idle: will-change is only held during the animation itself. */
+.rise, .page-in, .sheet, .fade { animation-fill-mode: backwards; }
+@media (max-width: 420px) { .glass { border-radius: 1.5rem; } }
+@media (hover: none) { .btn:hover, .fab:hover, .btn-p:hover, .btn-d:hover { filter: none; } }
+/* Low-power / low-RAM phones: soften the blur so scrolling and tab changes stay at full frame rate. */
+@media (max-width: 480px) { .glass, .navbar, .rail-surface { -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); } .glass-strong { -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); } }
 </style>
 </head>
 <body>
-<div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<div class="canvas" aria-hidden="true"></div>
+<div class="safe-top" aria-hidden="true"></div>
 <div id="root"><div id="boot"><span></span></div></div>
 <noscript>Budgy needs JavaScript to run.</noscript>
 
@@ -173,6 +346,8 @@ main > div, main section { min-width: 0; }
 <script src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-is@18.3.1/umd/react-is.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js"></script>
+<!-- html2canvas (pinned) turns the brown balance receipt into a PNG -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <!-- Babel compiles the JSX files below right in the browser (no build step) -->
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
 
@@ -185,6 +360,9 @@ main > div, main section { min-width: 0; }
 <script type="text/babel" data-presets="react" src="./pages.js"></script>
 <script type="text/babel" data-presets="react" src="./p2.js"></script>
 <script type="text/babel" data-presets="react" src="./p3.js"></script>
+<script type="text/babel" data-presets="react" src="./io.js"></script>
+<script type="text/babel" data-presets="react" src="./receipt.js"></script>
+<script type="text/babel" data-presets="react" src="./shortcuts.js"></script>
 <script type="text/babel" data-presets="react" src="./app.js"></script>
 </body>
 </html>

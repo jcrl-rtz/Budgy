@@ -11,8 +11,8 @@ Object.assign(IC, {
 })
 
 const CATS = { expense: ['Food', 'Rent', 'Transport', 'Bills', 'Fun', 'Shopping', 'Health', 'Other'], income: ['Salary', 'Freelance', 'Allowance', 'Gift', 'Other'] }
-const BASE = { payable: ['SPayLater', 'Tuition', 'Transportation', 'Utangs'], receivable: ['Allowance', 'Utangs', 'Other'] }
-// Built-in sources plus any the user added with "+ Add New Source" (stored in S.srcs).
+// Phase 2B: there are NO built-in sources. The Pending tab starts empty; every source is one the user adds with "+ Add New Source" (stored in S.srcs).
+const BASE = { payable: [], receivable: [] }
 const catsFor = (S, k) => [...BASE[k], ...(S.srcs || []).filter((x) => x.kind === k && !BASE[k].includes(x.name)).map((x) => x.name)]
 const daysTo = (d) => Math.round((new Date(d + 'T00:00') - new Date(off(0) + 'T00:00')) / 864e5)
 const dueTxt = (d) => { const n = daysTo(d); return n < 0 ? Math.abs(n) + 'd overdue' : n === 0 ? 'Due today' : 'Due in ' + n + 'd' }
@@ -33,10 +33,11 @@ function Fold({ title, right, open: o0 = false, i = 0, children }) {
 }
 
 /* ---------- Sheets ---------- */
-function TxSheet({ kind: k0, onClose }) {
+function TxSheet({ kind: k0, preset, onClose }) {
   const { S, c, addTx } = useApp()
   const [k, setK] = useState(k0 || 'expense'), [m, setM] = useState('')
-  const [f, setF] = useState({ amount: '', category: '', wallet: S.wallets[0].id, to: (S.wallets[1] || S.wallets[0]).id, date: off(0), note: '' })
+  const P = preset || {}
+  const [f, setF] = useState({ amount: P.amount || '', category: P.category || '', wallet: P.wallet || S.wallets[0].id, to: P.to || (S.wallets[1] || S.wallets[0]).id, date: P.date || off(0), note: P.note || '' })
   const u = (key) => (e) => setF({ ...f, [key]: e.target.value })
   const save = () => {
     if (!money(f.amount) || +f.amount <= 0) return setM('Enter an amount greater than zero with at most two decimals.')
@@ -65,9 +66,10 @@ function TxSheet({ kind: k0, onClose }) {
 }
 
 // Add or edit a payable / receivable. The category list ends with "+ Add New Source".
-function DebtSheet({ kind, item, preset, onClose }) {
+function DebtSheet({ kind, item, preset, fill, onClose }) {
   const { S, addDebt, updDebt, set } = useApp(), cats = catsFor(S, kind), pay = kind === 'payable'
-  const [f, setF] = useState({ party: item ? item.party : '', total: item ? String(item.total) : '', due: item ? item.due : off(14), cat: item ? item.cat : preset || cats[0], nc: '' }), [m, setM] = useState('')
+  const F = fill || {}
+  const [f, setF] = useState({ party: item ? item.party : F.party || '', total: item ? String(item.total) : F.total || '', due: item ? item.due : F.due || off(14), cat: item ? item.cat : preset || cats[0] || '__new', nc: '' }), [m, setM] = useState('')
   const u = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const all = item && !cats.includes(item.cat) ? [...cats, item.cat] : cats
   const save = () => {
@@ -217,8 +219,8 @@ function ReportSheet({ onClose }) {
 }
 
 function P2Sheets({ sheet: s, onClose }) {
-  if (s.k === 'tx') return <TxSheet kind={s.kind} onClose={onClose} />
-  if (s.k === 'debt') return <DebtSheet kind={s.kind} item={s.item} preset={s.preset} onClose={onClose} />
+  if (s.k === 'tx') return <TxSheet kind={s.kind} preset={s.preset} onClose={onClose} />
+  if (s.k === 'debt') return <DebtSheet kind={s.kind} item={s.item} preset={s.preset} fill={s.fill} onClose={onClose} />
   if (s.k === 'pay') return <PaySheet item={s.item} onClose={onClose} />
   if (s.k === 'goal') return <GoalSheet item={s.item} onClose={onClose} />
   if (s.k === 'gmoney') return <MoneySheet item={s.item} onClose={onClose} />
@@ -238,6 +240,27 @@ function QuickAddSheet({ onClose, openSheet }) {
 }
 
 /* ---------- Pending ---------- */
+// Phase 3: every payable / receivable has its own clearly visible Delete button (red, with a bin icon and the word "Delete").
+// It asks once, inline, before removing the item together with its payment history.
+function DebtDelete({ d, onYes }) {
+  const [on, setOn] = useState(false)
+  return (
+    <div className="pt-3 border-t border-bd/60">
+      {!on ? (
+        <button type="button" className="btn btn-d w-full !py-2 !text-sm" aria-label={'Delete ' + d.party} onClick={() => setOn(true)}><Ic n="trash" s={16} />Delete</button>
+      ) : (
+        <div className="space-y-2 fade" role="alert">
+          <p className="text-sm text-neg">Delete “{d.party}”? {(d.payments || []).length ? 'Its payment history is deleted too and those payments go back to your wallets. ' : ''}This can’t be undone.</p>
+          <div className="flex gap-2">
+            <button type="button" className="btn flex-1" onClick={() => setOn(false)}>Cancel</button>
+            <button type="button" className="btn btn-d flex-1 !bg-neg !text-white" onClick={onYes}><Ic n="trash" s={16} />Yes, delete</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DebtRow({ d, openSheet }) {
   const { S, delDebt } = useApp(), [h, setH] = useState(false)
   const pay = d.kind === 'payable', r = rem(d), done = r <= 0, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
@@ -252,8 +275,8 @@ function DebtRow({ d, openSheet }) {
         {!done && <button className="btn btn-p !py-1.5 !px-3 !text-xs" onClick={() => openSheet({ k: 'pay', item: d })}>{pay ? 'Pay' : 'Receive'}</button>}
         <button className="btn !py-1.5 !px-3 !text-xs" aria-expanded={h} onClick={() => setH(!h)}><Ic n="hist" s={14} />{h ? 'Hide history' : 'View history'}</button>
         <button className="btn btn-i !w-8 !h-8" aria-label={'Edit ' + d.party} onClick={() => openSheet({ k: 'debt', kind: d.kind, item: d })}><Ic n="pen" s={14} /></button>
-        <Confirm danger label="Delete" yes="Yes, delete" warn="This also deletes its payment history and puts those payments back in your wallets. It can’t be undone." onYes={() => delDebt(d.id)} />
       </div>
+      <DebtDelete d={d} onYes={() => delDebt(d.id)} />
       {h && (
         <div className="space-y-1.5 fade">
           {(d.payments || []).length ? d.payments.slice().reverse().map((p) => <div key={p.id} className="flex justify-between gap-3 text-xs"><span className="text-mu truncate">{fd(p.date)} · {W[p.wallet] || 'Removed'}</span><span className="tabular-nums">{pay ? '−' : '+'}{php(p.amount)}</span></div>) : <p className="text-xs text-mu">No payments recorded yet.</p>}
@@ -269,14 +292,15 @@ function Pending({ openSheet }) {
   const pay = kind === 'payable', mine = S.debts.filter((d) => d.kind === kind), cats = catsFor(S, kind)
   mine.forEach((d) => { if (!cats.includes(d.cat)) cats.push(d.cat) })
   const groups = cats.filter((k) => cat === 'all' || k === cat).map((k) => ({ k, items: mine.filter((d) => d.cat === k).sort((a, b) => (rem(a) <= 0) - (rem(b) <= 0) || a.due.localeCompare(b.due)) }))
-  const allOpen = groups.length > 0 && groups.every((g) => open[g.k])
+  const isOpen = (k) => open[k] !== false // groups start expanded so every item (and its Delete button) is visible
+  const allOpen = groups.length > 0 && groups.every((g) => isOpen(g.k))
   const late = mine.filter((d) => rem(d) > 0 && d.due < off(0)).length
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Tile l="Total payables" v={php(c.pay)} tone={c.pay > 0 ? 'text-neg' : ''} /><Tile l="Total receivables" v={php(c.rec)} tone={c.rec > 0 ? 'text-pos' : ''} />
       </div>
-      <div className="glass backdrop-blur-md !rounded-full p-1 grid grid-cols-2 gap-1" role="tablist">
+      <div className="glass !rounded-full p-1 grid grid-cols-2 gap-1" role="tablist">
         {[['payable', 'Payables'], ['receivable', 'Receivables']].map(([k, l]) => <button key={k} role="tab" aria-selected={kind === k} onClick={() => { setKind(k); setCat('all'); setOpen({}) }} className={'btn !border-transparent ' + (kind === k ? 'btn-p' : '!bg-transparent')}>{l}</button>)}
       </div>
       <div className="chips" role="tablist" aria-label="Filter by category">
@@ -290,9 +314,10 @@ function Pending({ openSheet }) {
           <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'debt', kind, item: null })}><Ic n="plus" s={14} />Add {pay ? 'payable' : 'receivable'}</button>
         </div>
       </div>
+      {!groups.length && <Empty t={'No ' + (pay ? 'payable' : 'receivable') + ' sources yet. Tap “Add New Source” to create your first category, or use “Add ' + (pay ? 'payable' : 'receivable') + '”.'} />}
       <div className="space-y-3">
         {groups.map((g) => {
-          const on = !!open[g.k], t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
+          const on = isOpen(g.k), t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
           return (
             <Glass key={g.k} className="p-4 sm:p-5">
               <button className="w-full flex items-center justify-between gap-3 text-left" aria-expanded={on} onClick={() => setOpen({ ...open, [g.k]: !on })}>
