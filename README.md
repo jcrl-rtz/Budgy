@@ -1,3 +1,10 @@
+# Budgy v7 GitHub-stable (gh-1): "ReferenceError: Auth is not defined"
+
+- `app.js`: every component App uses is looked up with `typeof X !== 'undefined'` (`parts()`), rendered through `Slot`, and every tab and sheet sits in its own error boundary (`Guard`). A missing or crashing component now shows a small "Reload" card instead of crashing the page; the nav stays usable.
+- `index.html`: a loader guard watches for the app to start. If it has not started after 25 s it clears the service-worker caches (never your budget data) and reloads once, then shows a Reload card. All app scripts, `firebase.js` and `manifest.json` carry `?v=v7-stable-gh-1`; bump that value (and `sw.js` VERSION) on every deploy.
+- `p3.js`: removed the duplicate `var SW` (core.js is the only declaration). All files were checked for top-level name collisions across files and against `index.html` inline scripts and CDN globals: none left.
+- `sw.js` VERSION is `budgy-v7-stable-gh-1`.
+
 # Budgy stable final: "Pending is not defined"
 
 - Real cause: `signed` was declared with `const` in both `core.js` (the 2-decimal number check) and `p2.js` (the +/- money formatter added with the Due Date Summary). Each `<script type="text/babel">` shares one global scope, so when `p2.js` loaded the browser threw "Identifier 'signed' has already been declared" and discarded the WHOLE file. That removed `Pending`, `Allocate`, `GoalsPage` and every other p2.js component, so `App` crashed on `<Pending />`.

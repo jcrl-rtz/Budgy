@@ -22,8 +22,7 @@ try { Object.assign(IC, {
    PWA AUTO-UPDATE
    One small shared object tracks the service worker so any component can react to "a new version is waiting".
    ===================================================================== */
-// SW, swOk and swNotify are created first in core.js (var / function declarations, so no temporal dead zone). Re-declared here only as a safety net.
-var SW = window.__budgySW = window.__budgySW || { reg: null, waiting: null, listeners: new Set(), updating: false, hadController: false }
+// SW, swOk and swNotify are declared once, in core.js (the first script). They are not re-declared here, so no file can collide with another.
 
 // Watch a registration: remember a worker that has finished installing while an older one still controls the page.
 function swWatch(reg) {
