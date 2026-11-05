@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Regenerates Budgy's PWA icons (white badge, brown "b", caramel coin).
 Same geometry as BrandMark in ui.js (64-unit grid).   Usage:  python3 make-icons.py   (needs Pillow)
-Writes icons/icon-192.png, icons/icon-512.png, icons/apple-touch-icon.png (180, full-bleed) and icons/maskable-512.png (full-bleed, safe zone)."""
+Writes icons/budgy-icon-192-v7.png, icons/budgy-icon-512-v7.png, icons/budgy-apple-touch-v7.png (180, full-bleed) and icons/budgy-maskable-512-v7.png (full-bleed, safe zone).
+The -v7 in the file names is deliberate: iOS caches home-screen icons by URL, so a new name is the strongest cache-buster. Bump the suffix (and ?v= in index.html, manifest.json, sw.js) next time the art changes."""
 from PIL import Image, ImageDraw, ImageFilter
 import os
 
@@ -106,7 +107,7 @@ def save(img, path, flatten=False):
 
 if __name__ == "__main__":
     os.makedirs("icons", exist_ok=True)
-    save(render(192, rounded=True), "icons/icon-192.png")
-    save(render(512, rounded=True), "icons/icon-512.png")
-    save(render(180, rounded=False), "icons/apple-touch-icon.png", flatten=True)   # iOS rounds the corners itself
-    save(render(512, rounded=False, glyph_scale=0.8), "icons/maskable-512.png", flatten=True)  # glyph inside the 80% safe zone
+    save(render(192, rounded=True), "icons/budgy-icon-192-v7.png")
+    save(render(512, rounded=True), "icons/budgy-icon-512-v7.png")
+    save(render(180, rounded=False), "icons/budgy-apple-touch-v7.png", flatten=True)   # iOS rounds the corners itself
+    save(render(512, rounded=False, glyph_scale=0.8), "icons/budgy-maskable-512-v7.png", flatten=True)  # glyph inside the 80% safe zone

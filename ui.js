@@ -31,12 +31,61 @@ const IC = {
   lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
   alert: ['M12 9v4', 'M12 17h.01', 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z']
 }
+IC.more = ['M5 12h.01', 'M12 12h.01', 'M19 12h.01']
+IC.pin = ['M12 17v5', 'M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z']
+IC.undo = ['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11']
+IC.palette = ['M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z', 'M13.5 6.5h.01', 'M17.5 10.5h.01', 'M6.5 12.5h.01', 'M8.5 7.5h.01']
+IC.repeat = ['m17 2 4 4-4 4', 'M3 11v-1a4 4 0 0 1 4-4h14', 'm7 22-4-4 4-4', 'M21 13v1a4 4 0 0 1-4 4H3']
 IC.mail = ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'm22 7-10 6L2 7']
 const Ic = ({ n, s = 20, cls = '' }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden="true">
     {(IC[n] || []).map((d, i) => <path key={i} d={d} />)}
   </svg>
 )
+
+/* ---------- Options (...) menu ---------- */
+// v7: one standard place for the secondary actions of a list item (edit, rename, delete ...). The popover is portalled to <body> and positioned from the
+// button, so cards stacked below can never cover it. An item with `confirm: { warn, yes }` asks once inside the menu before it runs.
+function OptionsMenu({ items, label = 'Options' }) {
+  const [pos, setPos] = useState(null), [ask, setAsk] = useState(null), btn = useRef(null), pop = useRef(null)
+  const close = () => { setPos(null); setAsk(null) }
+  const toggle = () => {
+    if (pos) return close()
+    const r = btn.current.getBoundingClientRect(), W = 232, vw = window.innerWidth, vh = window.innerHeight
+    const left = Math.max(8, Math.min(r.right - W, vw - W - 8)), up = vh - r.bottom < 210 && r.top > vh - r.bottom
+    setPos(up ? { left, bottom: vh - r.top + 6, up: true } : { left, top: r.bottom + 6 })
+  }
+  useEffect(() => {
+    if (!pos) return
+    const down = (e) => { if (pop.current && pop.current.contains(e.target)) return; if (btn.current && btn.current.contains(e.target)) return; close() }
+    const key = (e) => { if (e.key === 'Escape') { close(); if (btn.current) btn.current.focus() } }
+    document.addEventListener('pointerdown', down); document.addEventListener('keydown', key)
+    addEventListener('scroll', close, true); addEventListener('resize', close)
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); removeEventListener('scroll', close, true); removeEventListener('resize', close) }
+  }, [pos])
+  const run = (it) => { if (it.confirm) return setAsk(it); close(); it.onClick() }
+  return (
+    <>
+      <button ref={btn} type="button" className="btn btn-i shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={!!pos} onClick={toggle}><Ic n="more" s={20} /></button>
+      {pos && ReactDOM.createPortal(
+        <div ref={pop} role="menu" aria-label={label} className={'opt-menu' + (pos.up ? ' up' : '')} style={{ left: pos.left, top: pos.top, bottom: pos.bottom }}>
+          {ask ? (
+            <div className="p-2.5 space-y-2.5" role="alert">
+              <p className="text-[13px] leading-snug text-neg">{ask.confirm.warn}</p>
+              <div className="flex gap-2">
+                <button type="button" className="btn flex-1 !py-2 !text-[13px]" onClick={() => setAsk(null)}>Cancel</button>
+                <button type="button" className="btn btn-d flex-1 !py-2 !text-[13px] !bg-neg !text-white" onClick={() => { const f = ask.onClick; close(); f() }}>{ask.confirm.yes || 'Yes, delete'}</button>
+              </div>
+            </div>
+          ) : items.filter(Boolean).map((it, i) => (
+            <button key={i} type="button" role="menuitem" onClick={() => run(it)} className={'opt-i ' + (it.danger ? 'danger' : '')}>
+              {it.icon && <Ic n={it.icon} s={17} />}<span>{it.label}</span>
+            </button>
+          ))}
+        </div>, document.body)}
+    </>
+  )
+}
 const GoogleG = () => (
   <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -171,6 +220,28 @@ function WalletSheet({ item, onClose }) {
         <Err m={m} />
         <button type="submit" className="btn btn-p w-full">{item ? 'Save changes' : 'Add wallet'}</button>
       </form>
+    </Sheet>
+  )
+}
+
+// Colour code a wallet. The colour is saved on the wallet (wallet.color, '#rrggbb' or '') and shows on its card, in the cash chart and in pickers.
+function WalletColorSheet({ item, onClose }) {
+  const { S, updateWallet } = useApp(), w = S.wallets.find((x) => x.id === item.id) || item, cur = cleanColor(w.color)
+  const pick = (hex) => updateWallet(w.id, { color: hex })
+  return (
+    <Sheet title="Color code" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="glass-tile p-3 flex items-center gap-3"><i className="w-3.5 h-3.5 rounded-full shrink-0 border border-fg/15" style={{ background: cur || 'transparent' }} /><div className="min-w-0"><div className="font-semibold truncate">{w.name}</div><div className="text-xs text-mu">{cur ? 'Colour ' + cur : 'No colour yet'}</div></div></div>
+        <div className="grid grid-cols-5 gap-3" role="radiogroup" aria-label="Wallet colour">
+          {WALLET_COLORS.map(([n, hex]) => (
+            <button key={hex} type="button" role="radio" aria-checked={cur === hex} aria-label={n} title={n} onClick={() => pick(hex)} className="aspect-square rounded-full grid place-items-center transition-transform active:scale-90" style={{ background: hex, boxShadow: cur === hex ? '0 0 0 2px rgb(var(--s1)), 0 0 0 4px ' + hex : 'none' }}>
+              {cur === hex && <span className="text-white"><Ic n="check" s={18} /></span>}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center justify-between gap-3 text-sm"><span className="text-mu">Custom colour</span><input type="color" aria-label="Custom colour" value={cur || '#6366f1'} onChange={(e) => pick(cleanColor(e.target.value))} className="w-14 h-9 rounded-lg bg-transparent border border-fg/15 cursor-pointer p-0.5" /></label>
+        <div className="flex gap-2"><button type="button" className="btn flex-1" disabled={!cur} onClick={() => pick('')}>No colour</button><button type="button" className="btn btn-p flex-1" onClick={onClose}>Done</button></div>
+      </div>
     </Sheet>
   )
 }

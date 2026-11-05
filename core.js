@@ -27,6 +27,55 @@ const signed = (v) => /^-?\d+(\.\d{1,2})?$/.test(String(v).trim())
 let cnt = 0
 const nid = () => 'i' + Date.now().toString(36) + (cnt++).toString(36)
 const rem = (d) => q(d.total - (d.paid || 0))
+// v8 P1: a payable can lock money in specific wallets: d.allocations = [{ walletId, amount }]. Locked money stays in the wallet (nothing has been paid yet)
+// but is taken out of Spendable. The lock can never exceed what is still owed, so it shrinks by itself as payments are recorded.
+const cleanAllocs = (a, ids) => {
+  const seen = new Set(), out = []
+  ;(Array.isArray(a) ? a : []).forEach((x) => {
+    if (!x || typeof x !== 'object' || typeof x.walletId !== 'string' || seen.has(x.walletId) || (ids && !ids.has(x.walletId))) return
+    const n = +x.amount; if (!isFinite(n) || n <= 0) return
+    seen.add(x.walletId); out.push({ walletId: x.walletId, amount: q(n) })
+  })
+  return out
+}
+const lockRaw = (d) => (d && d.kind === 'payable' ? q((d.allocations || []).reduce((a, x) => a + (+x.amount || 0), 0)) : 0)
+const lockOf = (d) => Math.min(lockRaw(d), Math.max(0, rem(d)))
+// v8 P2: recurring payables / receivables. A recurring item carries d.isRecurring, d.frequency ('daily' | 'weekly' | 'monthly' | 'yearly'),
+// d.isVariableAmount (the amount changes every cycle) and d.recurDay (day of the month it was first due, so a 31st never drifts to the 28th).
+// When one is fully paid / received, the next one is generated (see payDebt in the store). d.nextId remembers it so it is never generated twice.
+// A generated variable item starts at 0 with d.needsAmount = true until the person sets the amount for the new cycle.
+const FREQS = ['daily', 'weekly', 'monthly', 'yearly']
+const FREQ_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }
+const nextDue = (due, freq, day) => {
+  const [y, m, dd] = due.split('-').map(Number), D = day || dd
+  if (freq === 'daily' || freq === 'weekly') { const t = new Date(y, m - 1, dd + (freq === 'daily' ? 1 : 7)); return iso(t) }
+  const ty = freq === 'yearly' ? y + 1 : m === 12 ? y + 1 : y, tm = freq === 'yearly' ? m : m === 12 ? 1 : m + 1
+  const last = new Date(ty, tm, 0).getDate() // last day of the target month, so Jan 31 -> Feb 28 and Feb 29 -> Feb 28
+  return iso(new Date(ty, tm - 1, Math.min(D, last)))
+}
+const isRecur = (d) => !!(d && d.isRecurring && FREQS.includes(d.frequency))
+const needsAmt = (d) => !!(d && d.needsAmount && !(d.total > 0))
+// The recurring fields of an item, cleaned. Returns {} for a one-off item, so those never carry empty recurring fields.
+const cleanRecur = (d) => {
+  if (!d || !d.isRecurring || !FREQS.includes(d.frequency)) return {}
+  const o = { isRecurring: true, frequency: d.frequency }
+  if (d.isVariableAmount === true) o.isVariableAmount = true
+  if (typeof d.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.due)) { const n = +(d.recurDay || d.due.slice(8)); if (n >= 1 && n <= 31) o.recurDay = Math.round(n) }
+  if (o.isVariableAmount && d.needsAmount === true && !(d.total > 0)) o.needsAmount = true
+  if (typeof d.nextId === 'string' && d.nextId) o.nextId = d.nextId
+  return o
+}
+const RECUR_KEYS = ['isRecurring', 'frequency', 'isVariableAmount', 'recurDay', 'needsAmount', 'nextId']
+const stripRecur = (d) => { const r = { ...d }; RECUR_KEYS.forEach((k) => delete r[k]); return r }
+// After a payment from wallet `w`, the lock is used up first from that wallet, then from the others, and never stays above what is still owed.
+const useLocks = (a, amt, w, left) => {
+  let todo = amt; const l = (a || []).map((x) => ({ ...x }))
+  const take = (x) => { const t = Math.min(x.amount, todo); x.amount = q(x.amount - t); todo = q(todo - t) }
+  l.filter((x) => x.walletId === w).forEach(take); l.forEach(take)
+  let over = q(l.reduce((s, x) => s + x.amount, 0) - Math.max(0, left))
+  for (let i = l.length - 1; i >= 0 && over > 0; i--) { const t = Math.min(l[i].amount, over); l[i].amount = q(l[i].amount - t); over = q(over - t) }
+  return l.filter((x) => x.amount > 0)
+}
 const fd = (s) => new Date(s + 'T00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
 const mq = () => (window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null)
 
@@ -80,7 +129,7 @@ function applyAppearance({ mode, theme, accent }) {
   Object.keys(vars).forEach((k) => r.style.setProperty(k, vars[k]))
   r.classList.toggle('light', !dark); r.classList.toggle('dark', dark); r.style.colorScheme = dark ? 'dark' : 'light'
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', c[0])
-  ls.set(UIK, JSON.stringify({ mode, bg: vars['--bg'] })) // read by the tiny script in index.html to avoid a flash
+  ls.set(UIK, JSON.stringify({ mode, bg: vars['--bg'], v7: 1 })) // read by the tiny script in index.html to avoid a flash
 }
 
 /* ---------- Net Worth card display settings (v4 Phase 2) ---------- */
@@ -96,26 +145,50 @@ const fixCard = (c) => {
   return { order, hidden }
 }
 
+/* ---------- Home pin + wallet colours (v7 Phase 2) ---------- */
+// S.homePin = the Home metric shown large at the top (one of HOME_KEYS); every other metric becomes a small summary card below it.
+// S.showCashPie = whether the optional "Where your cash sits" pie chart is shown (off by default).
+// wallet.color = '' (none) or a #rrggbb string, saved with each wallet so it syncs and is backed up with the budget.
+const HOME_KEYS = ['net', 'liquid', 'spendable', 'spent', 'payables', 'receivables', 'allocated', 'projected', 'pending']
+const WALLET_COLORS = [['Rose', '#f43f5e'], ['Orange', '#f97316'], ['Amber', '#f59e0b'], ['Green', '#22c55e'], ['Teal', '#14b8a6'], ['Sky', '#0ea5e9'], ['Indigo', '#6366f1'], ['Purple', '#a855f7'], ['Pink', '#ec4899'], ['Slate', '#64748b']]
+const cleanColor = (v) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '')
+
+/* ---------- Default sources (v7 final) ---------- */
+// "Payables" and "Receivables" exist as sources (categories) from the start so the Pending tab is usable straight away. They are ordinary sources:
+// they can be renamed or deleted, and Settings > Pending sources can add them back. fix() adds them once to budgets saved before this version (flag `ps3`).
+const PS_DEFAULTS = [{ kind: 'payable', name: 'Payables' }, { kind: 'receivable', name: 'Receivables' }]
+const hasSrc = (srcs, kind, name) => srcs.some((x) => x.kind === kind && x.name.toLowerCase() === String(name).trim().toLowerCase())
+
 /* ---------- Data model ---------- */
 // Same shape as your earlier Budgy so existing cloud data keeps working. Phase 2 adds transactions, payables and goals screens on top of it.
 const blank = () => ({
-  name: '', avatar: null, seen: false, mode: 'dark', theme: 'classic', accent: '',
+  name: '', avatar: null, seen: false, mode: 'light', theme: 'brown', accent: '', ui7: true,
   wallets: [{ id: 'w1', name: 'Cash on Hand', type: 'Cash', balance: 0 }],
-  tx: [], debts: [], goals: [], alloc: {}, srcs: [], cardStats: cardDefault()
+  tx: [], debts: [], goals: [], alloc: {}, srcs: PS_DEFAULTS.map((x) => ({ ...x })), cardStats: cardDefault(), homePin: 'net', showCashPie: false, ps3: true
 })
 const dataBlank = () => { const b = blank(); return { wallets: b.wallets, tx: b.tx, debts: b.debts, goals: b.goals, alloc: b.alloc, srcs: b.srcs } }
 const fix = (s) => {
+  const mig = !(s && s.ui7) // v7: budgets saved before v7 are moved to the new default look (Light + Brown) once; after that the person's own choice is kept
   const b = blank(), o = { ...b, ...s }
   o.wallets = Array.isArray(o.wallets) && o.wallets.length ? o.wallets : b.wallets
   ;['tx', 'debts', 'goals'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = [] })
   if (!o.alloc || typeof o.alloc !== 'object') o.alloc = {}
+  ;{ const ids = new Set(o.wallets.map((w) => w.id)) // v8: wallet allocations on payables (older budgets simply have none)
+    o.debts = o.debts.map((d) => { if (!d || typeof d !== 'object') return d; const a = d.kind === 'payable' ? cleanAllocs(d.allocations, ids) : []; const { allocations, ...r } = stripRecur(d); return { ...r, ...cleanRecur(d), ...(a.length ? { allocations: a } : {}) } }) } // v8 P2: recurring fields are cleaned the same way
   o.srcs = Array.isArray(o.srcs) ? o.srcs.filter((x) => x && (x.kind === 'payable' || x.kind === 'receivable') && typeof x.name === 'string' && x.name.trim()) : []
+  if (!(s && s.ps3)) PS_DEFAULTS.forEach((x) => { if (!hasSrc(o.srcs, x.kind, x.name)) o.srcs.push({ ...x }) }) // once per budget; after that the person's own list is kept
+  o.ps3 = true
   // Phase 3: avatar is null or { k: 'emoji' | 'img', v: string }. An uploaded image is a small data URL, so it syncs inside the same document.
   const av = o.avatar; o.avatar = av && typeof av === 'object' && (av.k === 'emoji' || av.k === 'img') && typeof av.v === 'string' && av.v.length < 120000 ? { k: av.k, v: av.v } : null
   o.seen = !!o.seen
   o.cardStats = fixCard(o.cardStats)
-  if (!THEMES.some((t) => t.id === o.theme)) o.theme = 'classic'
-  if (!['light', 'dark', 'system'].includes(o.mode)) o.mode = 'dark'
+  o.homePin = HOME_KEYS.includes(o.homePin) ? o.homePin : 'net'
+  o.showCashPie = o.showCashPie === true
+  o.wallets = o.wallets.map((w) => (cleanColor(w.color) === w.color ? w : { ...w, color: cleanColor(w.color) }))
+  if (mig) { o.mode = 'light'; o.theme = 'brown'; o.accent = '' }
+  o.ui7 = true
+  if (!THEMES.some((t) => t.id === o.theme)) o.theme = 'brown'
+  if (!['light', 'dark', 'system'].includes(o.mode)) o.mode = 'light'
   return o
 }
 const load = () => { try { const s = JSON.parse(ls.get(KEY)); if (s && s.wallets) return fix(s) } catch (e) {} return blank() }
@@ -140,9 +213,10 @@ const sample = () => ({
     { id: nid(), type: 'income', amount: 8000, category: 'Freelance', date: off(5), note: 'Logo project', wallet: 'w3' }
   ],
   debts: [
-    { id: nid(), kind: 'payable', cat: 'Installments', party: 'Phone installment', total: 4200.5, paid: 0, payments: [], due: off(8), wallet: 'w3' },
+    { id: nid(), kind: 'payable', cat: 'Installments', party: 'Phone installment', total: 4200.5, paid: 0, payments: [], due: off(8), wallet: 'w3', allocations: [{ walletId: 'w3', amount: 1500 }] },
     { id: nid(), kind: 'payable', cat: 'School', party: '2nd semester balance', total: 40000, paid: 10000, payments: [{ id: nid(), amount: 10000, wallet: 'w2', date: off(-5) }], due: off(20), wallet: 'w2' },
-    { id: nid(), kind: 'receivable', cat: 'Family', party: 'Monthly allowance', total: 5000, paid: 0, payments: [], due: off(9), wallet: 'w2' }
+    { id: nid(), kind: 'receivable', cat: 'Family', party: 'Monthly allowance', total: 5000, paid: 0, payments: [], due: off(9), wallet: 'w2', isRecurring: true, frequency: 'monthly' },
+    { id: nid(), kind: 'payable', cat: 'Payables', party: 'Electric bill', total: 0, paid: 0, payments: [], due: off(12), wallet: 'w2', isRecurring: true, frequency: 'monthly', isVariableAmount: true, needsAmount: true }
   ],
   goals: [
     { id: nid(), name: 'Emergency Fund', target: 60000, saved: 22000 },
@@ -151,7 +225,7 @@ const sample = () => ({
   ],
   alloc: {},
   // Demo sources, so the demo Pending tab shows the same groups the demo payables use.
-  srcs: [{ kind: 'payable', name: 'Installments' }, { kind: 'payable', name: 'School' }, { kind: 'receivable', name: 'Family' }]
+  srcs: [{ kind: 'payable', name: 'Payables' }, { kind: 'payable', name: 'Installments' }, { kind: 'payable', name: 'School' }, { kind: 'receivable', name: 'Receivables' }, { kind: 'receivable', name: 'Family' }]
 })
 
 /* ---------- Money maths ---------- */
@@ -180,12 +254,21 @@ function calc(S) {
   const liquid = q(Object.values(bal).reduce((a, b) => a + b, 0))
   const day = n.getDate(), dim = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(), left = dim - day
   const fc = Math.trunc((q(spent) / day) * left * 100 + 1e-6) / 100 // forecast: what you'd still spend at this month's daily average
-  const allocD = q(S.debts.filter((d) => d.kind === 'payable').reduce((a, d) => a + Math.min(S.alloc['d:' + d.id] || 0, Math.max(0, rem(d))), 0))
+  // Wallet locks (per payable) come first; the Smart Plan amount only fills what is still unlocked, so one payable is never reserved twice.
+  const lockW = Object.fromEntries(S.wallets.map((w) => [w.id, 0])); let locked = 0
+  S.debts.forEach((d) => {
+    const L = lockOf(d); if (!L) return
+    locked += L; const raw = lockRaw(d)
+    ;(d.allocations || []).forEach((x) => { if (x.walletId in lockW) lockW[x.walletId] += (+x.amount || 0) * (L / raw) })
+  })
+  Object.keys(lockW).forEach((k) => (lockW[k] = q(lockW[k])))
+  locked = q(locked)
+  const allocD = q(S.debts.filter((d) => d.kind === 'payable').reduce((a, d) => a + Math.min(S.alloc['d:' + d.id] || 0, Math.max(0, rem(d) - lockOf(d))), 0))
   const saved = q(S.goals.reduce((a, g) => a + g.saved, 0)), target = q(S.goals.reduce((a, g) => a + g.target, 0))
   return {
     bal, liquid, pay: q(pay), rec: q(rec), spent: q(spent), cat, pend: q(pend), dPay: q(dPay), dRec: q(dRec), fc,
     day, dim, left, monthPct: (day / dim) * 100, monthName: n.toLocaleDateString('en-PH', { month: 'long' }),
-    net: q(liquid + rec - pay), allocD, saved, target, allocated: q(allocD + saved), spendable: q(liquid - allocD - saved),
+    net: q(liquid + rec - pay), allocD, locked, lockW, saved, target, allocated: q(allocD + locked + saved), spendable: q(liquid - allocD - locked - saved),
     projected: q(liquid + pend + dRec - dPay - fc)
   }
 }
@@ -218,7 +301,7 @@ function Provider({ children }) {
   }
   const adopt = (d) => { const ns = fix(d.state); R.skip = true; R.t = d.t; R.sent = d.t; R.S = ns; ls.set(TK, String(d.t)); setS(ns); setSync('synced') }
   const wipeLocal = () => {
-    const keep = { mode: R.S.mode, theme: R.S.theme, accent: R.S.accent, cardStats: R.S.cardStats } // appearance (and the card display settings) survive logging out
+    const keep = { mode: R.S.mode, theme: R.S.theme, accent: R.S.accent, cardStats: R.S.cardStats, homePin: R.S.homePin, showCashPie: R.S.showCashPie } // appearance (and the card / Home display settings) survive logging out
     const ns = { ...blank(), ...keep }
     R.skip = true; R.t = 0; R.sent = 0; R.ready = false; R.S = ns; setS(ns); ls.del(TK); ls.set(KEY, JSON.stringify(ns))
   }
@@ -288,6 +371,7 @@ function Provider({ children }) {
         ...s, wallets: rest, tx: s.tx.filter((x) => x.wallet !== id && x.to !== id),
         debts: s.debts.map((d) => {
           const gone = (d.payments || []).filter((p) => p.wallet === id), amt = q(gone.reduce((a, p) => a + p.amount, 0))
+          if (d.allocations) { const a = d.allocations.filter((x) => x.walletId !== id); if (a.length) d = { ...d, allocations: a }; else { d = { ...d }; delete d.allocations } }
           return { ...d, wallet: d.wallet === id ? rest[0].id : d.wallet, paid: q(Math.max(0, (d.paid || 0) - amt)), payments: (d.payments || []).filter((p) => p.wallet !== id) }
         })
       }
@@ -297,9 +381,54 @@ function Provider({ children }) {
     delTx: (id) => setS((s) => ({ ...s, tx: s.tx.filter((t) => t.id !== id) })),
     // Payables and receivables (a payment moves money in or out of a wallet through calc())
     addDebt: (d) => setS((s) => ({ ...s, debts: [...s.debts, { id: nid(), paid: 0, payments: [], ...d }] })),
-    updDebt: (id, p) => upd('debts', id, p),
+    // v8 P2: an edit that carries `isRecurring` replaces the item's recurring fields (off = they are removed); other edits leave them alone.
+    updDebt: (id, p) => setS((s) => ({ ...s, debts: s.debts.map((x) => { if (x.id !== id) return x; const m = { ...x, ...p }; return 'isRecurring' in p ? { ...stripRecur(m), ...cleanRecur(m) } : m }) })),
     delDebt: (id) => setS((s) => { const a = { ...s.alloc }; delete a['d:' + id]; return { ...s, debts: s.debts.filter((d) => d.id !== id), alloc: a } }),
-    payDebt: (id, amount, wallet) => setS((s) => ({ ...s, debts: s.debts.map((d) => (d.id === id ? { ...d, paid: q((d.paid || 0) + amount), payments: [...(d.payments || []), { id: nid(), amount, wallet, date: off(0) }] } : d)) })),
+    // v8 P2: when a recurring item is fully paid / received, the next one is generated (unless it already was). A variable-amount item comes back at 0 and needs an amount.
+    payDebt: (id, amount, wallet) => setS((s) => {
+      let made = null
+      const debts = s.debts.map((d) => {
+        if (d.id !== id) return d
+        const n = { ...d, paid: q((d.paid || 0) + amount), payments: [...(d.payments || []), { id: nid(), amount, wallet, date: off(0) }] }, a = useLocks(d.allocations, amount, wallet, rem(n))
+        if (a.length) n.allocations = a; else delete n.allocations
+        if (isRecur(n) && rem(n) <= 0 && !(n.nextId && s.debts.some((x) => x.id === n.nextId))) {
+          const v = n.isVariableAmount === true, day = n.recurDay || +n.due.slice(8), nx = nid()
+          made = { id: nx, kind: n.kind, cat: n.cat, party: n.party, total: v ? 0 : n.total, paid: 0, payments: [], due: nextDue(n.due, n.frequency, day), wallet: n.wallet, isRecurring: true, frequency: n.frequency, recurDay: day }
+          if (v) { made.isVariableAmount = true; made.needsAmount = true }
+          n.nextId = nx
+        }
+        return n
+      })
+      return { ...s, debts: made ? [...debts, made] : debts }
+    }),
+    // Wallet allocations for one payable: [{ walletId, amount }]. An empty list removes the lock.
+    setAllocations: (id, list) => setS((s) => { const a = cleanAllocs(list, new Set(s.wallets.map((w) => w.id))); return { ...s, debts: s.debts.map((d) => { if (d.id !== id || d.kind !== 'payable') return d; const { allocations, ...r } = d; return a.length ? { ...r, allocations: a } : r }) } }),
+    // Undo a recorded payment / receipt: the entry is removed (the wallet gets its money back or gives it up again) and the remaining balance is restored.
+    undoPay: (id, payId) => setS((s) => {
+      let gone = null
+      const debts = s.debts.map((d) => {
+        const p = d.id === id && (d.payments || []).find((x) => x.id === payId)
+        if (!p) return d
+        const n = { ...d, paid: q(Math.max(0, (d.paid || 0) - p.amount)), payments: d.payments.filter((x) => x.id !== payId) }
+        // v8 P2: undoing the payment that completed a recurring item takes back the next one it generated, as long as nothing was recorded on it yet.
+        if (n.nextId && rem(n) > 0) { const nx = s.debts.find((x) => x.id === n.nextId); if (nx && !(nx.payments || []).length) { gone = nx.id; delete n.nextId } }
+        return n
+      })
+      if (!gone) return { ...s, debts }
+      const a = { ...s.alloc }; delete a['d:' + gone]
+      return { ...s, debts: debts.filter((d) => d.id !== gone), alloc: a }
+    }),
+    // Sources (the groups on the Pending tab). A source is { kind: 'payable' | 'receivable', name }; payables / receivables point to it with `cat`.
+    addSrc: (kind, name) => setS((s) => (hasSrc(s.srcs || [], kind, name) ? s : { ...s, srcs: [...(s.srcs || []), { kind, name: name.trim() }] })),
+    renameSrc: (kind, old, name) => setS((s) => {
+      const n = name.trim(), has = (s.srcs || []).some((x) => x.kind === kind && x.name === old)
+      return { ...s, srcs: has ? s.srcs.map((x) => (x.kind === kind && x.name === old ? { ...x, name: n } : x)) : [...(s.srcs || []), { kind, name: n }], debts: s.debts.map((d) => (d.kind === kind && d.cat === old ? { ...d, cat: n } : d)) }
+    }),
+    delSrc: (kind, name) => setS((s) => { // removes the source and every item in it (their payments go back to the wallets, as with delDebt)
+      const gone = new Set(s.debts.filter((d) => d.kind === kind && d.cat === name).map((d) => d.id)), a = { ...s.alloc }
+      gone.forEach((id) => delete a['d:' + id])
+      return { ...s, srcs: (s.srcs || []).filter((x) => !(x.kind === kind && x.name === name)), debts: s.debts.filter((d) => !gone.has(d.id)), alloc: a }
+    }),
     // Smart Plan allocations, keyed 'd:<debtId>'
     setAlloc: (p) => setS((s) => ({ ...s, alloc: { ...s.alloc, ...p } })),
     // Goals

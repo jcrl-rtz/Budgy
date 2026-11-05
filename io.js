@@ -27,7 +27,7 @@ const csvOut = (rows) => rows.map((r) => r.map((v) => '"' + String(v == null ? '
 function buildBackup(S) {
   return {
     app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: new Date().toISOString(),
-    profile: { name: S.name || '', avatar: S.avatar || null, mode: S.mode, theme: S.theme, accent: S.accent || '', cardStats: fixCard(S.cardStats) },
+    profile: { name: S.name || '', avatar: S.avatar || null, mode: S.mode, theme: S.theme, accent: S.accent || '', cardStats: fixCard(S.cardStats), homePin: HOME_KEYS.includes(S.homePin) ? S.homePin : 'net', showCashPie: S.showCashPie === true },
     data: { wallets: S.wallets, tx: S.tx, debts: S.debts, goals: S.goals, alloc: S.alloc || {}, srcs: S.srcs || [] }
   }
 }
@@ -63,7 +63,7 @@ function parseBackup(text) {
   const wallets = []
   ;(Array.isArray(d.wallets) ? d.wallets : []).forEach((w) => {
     if (!w || typeof w !== 'object' || !str(w.name, 40) || !isNum(+w.balance)) { skipped++; return }
-    wallets.push({ id: uid(w.id), name: str(w.name, 40), type: str(w.type, 20) || 'Cash', balance: q(+w.balance) })
+    wallets.push({ id: uid(w.id), name: str(w.name, 40), type: str(w.type, 20) || 'Cash', balance: q(+w.balance), color: cleanColor(w.color) })
   })
   if (!wallets.length) wallets.push({ id: uid('w1'), name: 'Cash on Hand', type: 'Cash', balance: 0 })
   const wid = new Set(wallets.map((w) => w.id))
@@ -79,10 +79,13 @@ function parseBackup(text) {
 
   const debts = []
   ;(Array.isArray(d.debts) ? d.debts : []).forEach((x) => {
-    if (!x || typeof x !== 'object' || !['payable', 'receivable'].includes(x.kind) || !isNum(x.total) || x.total <= 0 || !isDate(x.due) || !str(x.party, 40)) { skipped++; return }
+    if (!x || typeof x !== 'object' || !['payable', 'receivable'].includes(x.kind) || !isNum(x.total) || x.total < 0 || (x.total === 0 && !(x.isRecurring && x.isVariableAmount && x.needsAmount)) || !isDate(x.due) || !str(x.party, 40)) { skipped++; return }
     const payments = (Array.isArray(x.payments) ? x.payments : []).filter((y) => y && isNum(y.amount) && y.amount > 0 && wid.has(y.wallet) && isDate(y.date)).map((y) => ({ id: uid(y.id), amount: q(y.amount), wallet: y.wallet, date: y.date }))
     const paid = q(payments.reduce((a, y) => a + y.amount, 0)) // always derived from the payment history so balances stay consistent
     debts.push({ id: uid(x.id), kind: x.kind, cat: str(x.cat, 24) || 'Other', party: str(x.party, 40), total: q(x.total), paid: Math.min(paid, q(x.total)), payments, due: x.due, wallet: wid.has(x.wallet) ? x.wallet : wallets[0].id })
+    const al = x.kind === 'payable' ? cleanAllocs(x.allocations, wid) : [] // v8: wallet allocations survive backup / restore
+    if (al.length) debts[debts.length - 1].allocations = al
+    Object.assign(debts[debts.length - 1], cleanRecur({ ...x, due: x.due, total: x.total })) // v8 P2: recurring fields survive backup / restore
   })
 
   const goals = []
@@ -108,6 +111,8 @@ function parseBackup(text) {
   if (THEMES.some((t) => t.id === p.theme)) profile.theme = p.theme
   if (typeof p.accent === 'string' && (p.accent === '' || /^\d{1,3} \d{1,3} \d{1,3}$/.test(p.accent))) profile.accent = p.accent
   if (p.cardStats && typeof p.cardStats === 'object') profile.cardStats = fixCard(p.cardStats)
+  if (HOME_KEYS.includes(p.homePin)) profile.homePin = p.homePin
+  if (typeof p.showCashPie === 'boolean') profile.showCashPie = p.showCashPie
 
   return { data: { wallets, tx, debts, goals, alloc, srcs }, profile, counts: { wallets: wallets.length, tx: tx.length, debts: debts.length, goals: goals.length }, skipped, at: wrapped && typeof raw.exportedAt === 'string' ? raw.exportedAt.slice(0, 10) : '' }
 }

@@ -68,7 +68,12 @@ function buildReceipt(S, c) {
   const card = rEl('div', 'box-sizing:border-box;width:' + R_W + 'px;padding:14px 28px 20px;background-color:' + RC.paper + ';')
 
   // Header: brown ring logo, wordmark, subtitle (all centred, no letter-spacing so they are truly centred in the PNG).
-  const logo = rEl('div', 'width:46px;height:46px;border-radius:23px;border:2px solid ' + RC.brown + ';line-height:42px;text-align:center;font-size:28px;font-weight:700;color:' + RC.brown + ';', 'b')
+  // The ring and the "b" are plain absolutely-positioned boxes (no text), so html2canvas cannot shift the glyph. Geometry = BrandMark's "b" (64-unit grid),
+  // scaled by K and centred on the ring's inner centre (21,21 inside a 46px border-box ring with a 2px border).
+  const K = 0.625, gx = (x) => (21 + (x - 33.9) * K).toFixed(2) + 'px', gy = (y) => (21 + (y - 30.95) * K).toFixed(2) + 'px', gs = (v) => (v * K).toFixed(2) + 'px'
+  const stem = rEl('div', 'position:absolute;left:' + gx(21.1) + ';top:' + gy(12.4) + ';width:' + gs(6.4) + ';height:' + gs(37.1) + ';border-radius:' + gs(3.2) + ';background-color:' + RC.brown + ';')
+  const bowl = rEl('div', 'position:absolute;box-sizing:border-box;left:' + gx(21.1) + ';top:' + gy(36.7 - 12.8) + ';width:' + gs(25.6) + ';height:' + gs(25.6) + ';border-radius:50%;border:' + gs(6.4) + ' solid ' + RC.brown + ';')
+  const logo = rEl('div', 'position:relative;flex:none;box-sizing:border-box;width:46px;height:46px;border-radius:23px;border:2px solid ' + RC.brown + ';margin:0 auto;', null, [stem, bowl])
   card.appendChild(rEl('div', 'display:flex;flex-direction:column;align-items:center;width:100%;', null, [
     logo,
     rTxt('BUDGY', 20, 28, 'margin-top:8px;font-weight:700;text-align:center;width:100%;'),

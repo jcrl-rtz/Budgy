@@ -1,3 +1,81 @@
+# Budgy v8 Final (Phase 6): Due Date Summary
+
+## What changed
+- **Due Date Summary** at the top of the Pending tab (above the sources). Active payables and receivables (something left to settle, amount set) are grouped by exact due date: "Due Today", "Due Tomorrow", "Due Nov 15" (the year is shown for other years). Past dates are labelled "Overdue" in red and sort first.
+- **Totals per date:** payables only shows **Total Due**; receivables only shows **Total to Receive**; a date with both shows **Net** (receivables minus payables) plus the separate Pay and Get sums.
+- **Collapsible:** the whole section and every date fold open and closed, with Expand all / Collapse all. Today and overdue dates start open; later dates start closed.
+- **Actions in place:** every item has the standard `...` menu with **Mark as Paid / Mark as Received** (opens the normal record sheet, partial amounts allowed), **Edit** and **Delete** (with confirm). Recurring items still create their next one when fully settled, and the summary updates live.
+- Variable-amount items still waiting for an amount are left out until set.
+- Files changed: p2.js, sw.js (version `budgy-v8-final-1`, so installed copies show Update Now), README.md.
+
+---
+
+# Budgy v8 Phase 2: recurring payables and receivables
+
+## What changed in v8 P2
+- **Recurring toggle** in the Add / Edit sheet for every payable and receivable, with a frequency (Daily, Weekly, Monthly, Yearly) and a **Variable amount** checkbox.
+- **Auto-generation:** when a recurring item is fully paid or received, the next one is created with the next due date. Month-end dates are kept (a bill due on the 31st goes to Feb 28, then back to Mar 31).
+- **Variable amount:** the next item starts at ₱0 with a red **Set Amount** badge and button. Tap it, enter the amount for the new cycle, and it becomes a normal item. Until then it is left out of totals and the Allocate tab.
+- **Undo is safe:** undoing the payment that completed a recurring item removes the next one it created (if nothing was recorded on it). A next item is never created twice.
+- Recurring fields (`isRecurring`, `frequency`, `isVariableAmount`, `recurDay`, `needsAmount`, `nextId`) are stored in `core.js`, cleaned on load, and kept in backup / restore (`io.js`).
+- The demo data has a recurring allowance and a variable "Electric bill".
+- Files changed: core.js, p2.js, io.js, ui.js (repeat icon), sw.js (version), README.md.
+
+# Budgy v8 Phase 1: wallet allocations for payables
+
+Plain files only (no build step). Upload every file to the root of your `main` branch, as before.
+
+## What changed in v8 P1
+| Area | Change |
+|---|---|
+| Data model | A payable can have `allocations: [{ walletId, amount }]`. Saved with the budget, synced, and included in backups (`io.js` validates them on import). Older budgets and backups have none and work as before. |
+| Spendable | Locked money stays in the wallet (nothing is paid yet) but is taken out of **Spendable** and counted in **Allocated** (`c.locked` in `calc`). The lock is capped at what is still owed, and Smart Plan only fills what a payable has not already locked, so one payable is never reserved twice. |
+| Allocate Funds | Pending > payable `...` menu > **Allocate Funds** (or **Edit Allocation** once set) opens a bottom sheet: one amount box per wallet with Max and Clear, a live progress bar, and checks against each wallet's free balance (balance minus what other payables locked there) and the remaining amount. **Remove allocation** is in the sheet; **Remove Allocation** (with confirm) is also in the `...` menu. |
+| Payable card | A lock badge `₱500 / ₱1,000 Allocated`, a progress bar, the per-wallet split, and "Fully locked" / "₱x unlocked". |
+| Payments | Paying uses up the lock first from the wallet you paid from, so the lock never exceeds what is still owed. Undoing a payment does not bring the lock back; allocate again if you want it. Deleting a wallet drops its locks. |
+| Allocate tab | Sliders and Smart Plan work on the part not already locked; the breakdown has a new "Locked in wallets for payables" row. |
+| Updates | `sw.js` `VERSION` is `budgy-v8-p1-1`, so installed copies show the Update Now prompt. |
+
+Files touched: `core.js`, `p2.js`, `io.js`, `sw.js`, `README.md`.
+
+---
+
+# Budgy v7 Final (Phase 3): unified Pending with sources, and Undo for payments
+
+Plain files only (no build step). Upload every file to the root of your `main` branch, as before.
+
+## What changed in v7 Final
+| Area | Change |
+|---|---|
+| Pending layout | The Payables / Receivables switch and the category filter chips are gone. Pending is one list of **sources**, each with a Payable or Receivable tag, its item count and remaining total. |
+| Source-first adding | **Add Source** (top of Pending) asks for a type and a name. **Add payable / Add receivable** now lives inside each source and files the new item in that source. Quick add still works and offers the source list. |
+| Source options | Each source has a `...` menu: **Edit Name** (renames the source and every item in it) and **Delete** (asks first; deletes the source and its items, and their payments go back to the wallets). |
+| Default categories | "Payables" and "Receivables" are sources from the start. Budgets saved before this version get them once (flag `ps3`); after that they can be renamed or deleted like any source. **Settings > Pending sources** lists every source (add, rename, delete) and shows **Restore "Payables"** / **Restore "Receivables"** when one is missing. |
+| Undo | Every Paid / Received entry has an **Undo** button: in each item's history, in the new **Payment history** list at the foot of Pending, and in Home's Recent activity. It removes the entry and restores the remaining balance, so the wallet balance, totals and Allocate figures all go back (`undoPay` in `core.js`). |
+| Updates | `sw.js` `VERSION` is `budgy-v7-final-1`, so installed copies show the Update Now prompt. |
+
+Files touched: `core.js`, `ui.js`, `p2.js`, `pages.js`, `sw.js`, `README.md`.
+
+---
+
+# Budgy v7, Phase 2 of 2: Home card pinning and Wallets redesign
+
+Plain files only (no build step). Upload every file to the root of your `main` branch, as before.
+
+## What changed in v7 Phase 2
+| Area | Change |
+|---|---|
+| Home: pinning | The hard-coded highlight view is gone. Every Home metric (Net worth, Liquid cash, Spendable, Spent this month, Total payables, Receivables, Allocated, Projected month-end, Pending net) is a card. The **pinned** one is shown large at the top; the rest become small summary cards below it. Small cards have a `...` menu with **Pin to top** (and a shortcut to the related tab). The pinned card has **Change pinned card** (the Net worth credit card has a pin button beside its gear). Default pin is Net worth, so existing users see the same top card. Stored as `S.homePin`, synced and included in backups. |
+| Cash pie chart | The "Where your cash sits" chart is off by default. Settings > Display > **Cash pie chart** turns it on (it appears on the Wallets tab, where it always lived). Stored as `S.showCashPie`, synced and included in backups. |
+| Wallets: clutter | The wide Edit balance button on every wallet card is removed. |
+| Wallets: options menu | Each wallet card has a `...` menu: **Edit Balance**, **Edit Name**, **Color Code**, **Delete**. |
+| Wallets: colour coding | New `wallet.color` (`''` or `#rrggbb`) in the data schema. Pick from 10 swatches, a custom colour, or none. The card gets a tinted background, coloured border, coloured icon chip and a dot beside the name; the optional pie uses the same colour. Colours are validated on load and on import, and old budgets and backups without colours keep working. |
+| Updates | `sw.js` `VERSION` is `budgy-v7-p2-1`, so installed copies show the Update Now prompt. |
+
+Files touched: `core.js`, `ui.js`, `pages.js`, `io.js`, `app.js`, `p3.js`, `sw.js`, `README.md`.
+
+---
+
 # Budgy v5 Final (Phase 2 of 2): aligned brown receipt, crisp export, smooth polish
 
 Plain files only (no build step). Upload every file to the root of your `main` branch, as before.
@@ -169,3 +247,18 @@ One private document per user at `users/{uid}/budget/v2`, `{ t, json }`. Name, a
 
 ## Firestore rules summary
 Only the signed-in owner can read, write or delete anything under `users/{uid}/...`. Writes to `budget/*` must be exactly `{ t: number, json: string }` and under the size limit. Everything else is denied.
+
+## v7 Phase 1 (fluidity, UI polish, core fixes)
+
+| Change | Where |
+|---|---|
+| Swipe left/right on the content to switch tabs (finger-following, rubber band at the ends, ignores inputs / sliders / sideways-scrolling rows and is off while a sheet is open) | `useSwipeTabs` in `app.js` |
+| Directional slide + fade page transitions (tap and swipe use the same motion) | `.page-in.from-r / .from-l` in `index.html`, `goto()` in `app.js` |
+| Floating pill navbar with a sliding circular accent indicator | `.pillnav` in `index.html`, nav block in `app.js` |
+| Default look is Light + Brown (new budgets, and a one-time move for budgets saved before v7; your later choices are kept) | `blank()` / `fix()` in `core.js`, pre-paint script in `index.html` |
+| Net Worth card corner artifact: paint containment (`contain: paint`) was clipping card shadows to a rectangle; the card shadow now sits on a rounded layer behind it | `.ncard`, `.ncard-wrap::before` in `index.html` |
+| Standard `...` options menu (edit / rename / delete with inline confirm) on wallets, payables / receivables and goals | `OptionsMenu` in `ui.js` |
+| iOS icon cache-bust: icons renamed `budgy-*-v7.png`, `?v=7` on the apple-touch-icon, manifest and service worker | `make-icons.py`, `index.html`, `manifest.json`, `sw.js` |
+| Receipt logo: ring and "b" are built from plain boxes and centred on the ring (no text baseline to drift) | `receipt.js` |
+
+After deploying, iOS only refreshes the home-screen icon when the app is removed and added again.

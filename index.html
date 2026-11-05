@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Budgy</title>
 <meta name="description" content="Personal budget tracker with wallets, payables, receivables, savings and smart allocation.">
-<meta name="theme-color" content="#09090b">
+<meta name="theme-color" content="#f9f6f3">
 <link rel="manifest" href="./manifest.json">
-<link rel="icon" type="image/png" href="./icons/icon-192.png?v=6">
-<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=6">
+<link rel="icon" type="image/png" href="./icons/budgy-icon-192-v7.png?v=7">
+<!-- iOS keeps the first home-screen icon it sees. New file name + ?v=7 forces a fresh download; remove and re-add the app to the Home Screen once to pick it up. -->
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/budgy-apple-touch-v7.png?v=7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,10 +18,13 @@
 <!-- Apply the saved light/dark mode and solid background before first paint so there is no flash. The Appearance Engine in core.js takes over once React starts. -->
 <script>
 try {
-  var u = JSON.parse(localStorage.getItem('budgy.ui') || '{}'), m = u.mode || 'dark', r = document.documentElement;
+  var u = JSON.parse(localStorage.getItem('budgy.ui') || '{}'), r = document.documentElement;
+  // v7: the default look is Light + Brown. Saved UI settings written before v7 (no v7 flag) are ignored once; core.js then migrates the saved budget.
+  var m = u.v7 ? (u.mode || 'light') : 'light';
   var light = m === 'light' || (m === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
   r.classList.remove('dark', 'light'); r.classList.add(light ? 'light' : 'dark');
-  if (u.bg) r.style.setProperty('--bg', u.bg);
+  r.style.setProperty('--bg', u.v7 && u.bg ? u.bg : '249 246 243');
+  if (!u.v7) { r.style.setProperty('--a', '161 98 58'); r.style.setProperty('--s1', '255 255 255'); r.style.setProperty('--s2', '242 235 229'); r.style.setProperty('--bd', '229 217 206'); }
 } catch (e) {}
 </script>
 
@@ -201,11 +205,14 @@ button:focus-visible, a:focus-visible, .field:focus-visible { outline: 2px solid
 /* ---------- Net Worth credit card (Phase 2A) ---------- */
 /* A physical-card look: deep accent-tinted body, guilloche lines, holographic foil, gold EMV chip, sweeping sheen and a pointer-driven glare.
    The body always stays dark so the white card text keeps its contrast in every theme and in light mode. Leather themes add grain + stitching. */
-.ncard-wrap { perspective: 1100px; }
+.ncard-wrap { position: relative; perspective: 1100px; border-radius: 1.5rem; isolation: isolate; }
+/* v7 fix: the outer drop shadow used to be on .ncard itself and was cut off by a rectangular paint-containment box, which showed up as a sharp
+   rectangle under the rounded corners. It now lives on its own rounded layer behind the card, and nothing clips it. */
+.ncard-wrap::before { content: ''; position: absolute; inset: 0; border-radius: 1.5rem; z-index: 0; pointer-events: none; box-shadow: 0 26px 44px -20px rgb(var(--a) / .55), var(--e4); }
 .ncard {
   --rx: 0deg; --ry: 0deg; --gx: 30%; --gy: 0%;
   position: relative; width: 100%; aspect-ratio: 1.586 / 1; border-radius: 1.5rem; overflow: hidden; isolation: isolate; container-type: inline-size;
-  color: #fff; transform: rotateX(var(--rx)) rotateY(var(--ry)); transform-style: preserve-3d; transition: transform .35s cubic-bezier(.2,.8,.2,1);
+  color: #fff; transform: rotateX(var(--rx)) rotateY(var(--ry)); transition: transform .35s cubic-bezier(.2,.8,.2,1);
   background-color: #14121a;
   background-color: color-mix(in srgb, rgb(var(--a)) 30%, #08080d);
   background-image:
@@ -213,7 +220,9 @@ button:focus-visible, a:focus-visible, .field:focus-visible { outline: 2px solid
     radial-gradient(95% 85% at -8% 108%, rgb(var(--a) / .34), rgb(var(--a) / 0) 62%),
     linear-gradient(135deg, rgb(255 255 255 / .16) 0%, rgb(255 255 255 / 0) 38%, rgb(0 0 0 / .42) 100%);
   border: 1px solid rgb(255 255 255 / .16);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), inset 0 -18px 30px -18px rgb(0 0 0 / .6), 0 26px 44px -20px rgb(var(--a) / .55), var(--e4);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), inset 0 -18px 30px -18px rgb(0 0 0 / .6);
+  z-index: 1; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  -webkit-mask-image: -webkit-radial-gradient(#fff, #000); /* makes iOS Safari honour the rounded clip even with blend-mode layers inside */
 }
 .ncard.live { transition: transform .08s linear; }
 .ncard > i, .ncard > b { position: absolute; inset: 0; pointer-events: none; display: block; }
@@ -292,7 +301,12 @@ button:focus-visible, a:focus-visible, .field:focus-visible { outline: 2px solid
 /* Tab switch: a short fade with a small lift. Used by the page wrapper in app.js. */
 .page-in { animation: pagein .34s var(--ease-out) both; will-change: transform, opacity; transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 @keyframes pagein { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
-@media (prefers-reduced-motion: reduce) { .rise, .sheet, .fade, .page-in { animation: none !important; } .bar > i, .safe-top, .btn, .fab { transition: none; } }
+/* v7: tabs slide in from the side they sit on (set by goto() in app.js), so tapping and swiping feel the same. */
+.page-in.from-r { animation-name: pagein-r; } .page-in.from-l { animation-name: pagein-l; }
+@keyframes pagein-r { from { opacity: 0; transform: translate3d(38px, 0, 0); } }
+@keyframes pagein-l { from { opacity: 0; transform: translate3d(-38px, 0, 0); } }
+.swipe-area { min-height: 62dvh; touch-action: pan-y; }
+@media (prefers-reduced-motion: reduce) { .rise, .sheet, .fade, .page-in, .opt-menu { animation: none !important; } .bar > i, .safe-top, .btn, .fab, .pillnav-i, .pn-btn, .pn-btn svg { transition: none; } }
 
 /* ---------- Misc ---------- */
 .tabular-nums { font-variant-numeric: tabular-nums; }
@@ -325,7 +339,6 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .scrim { overscroll-behavior: contain; touch-action: none; }
 /* Cards and tabs: isolate paint so one card animating never repaints its neighbours. */
 .glass, .glass-tile { contain: layout style; }
-.page-in, .rise, .sheet { contain: paint; }
 /* Fewer GPU layers while idle: will-change is only held during the animation itself. */
 .rise, .page-in, .sheet, .fade { animation-fill-mode: backwards; }
 @media (max-width: 420px) { .glass { border-radius: 1.5rem; } }
@@ -408,6 +421,37 @@ html.light .auth-halo::before { background: radial-gradient(closest-side, rgb(14
 .sc-url { font-family: 'Space Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 17px; word-break: break-all; color: rgb(var(--fg)); }
 .sc-var { display: inline-block; margin-left: 2px; padding: 0 7px; border-radius: 7px; background: #2f6df6; color: #fff; font-family: 'Geist', -apple-system, system-ui, sans-serif; font-size: 11px; font-weight: 600; line-height: 17px; }
 .sc-hint { margin-top: 7px; font-size: 11.5px; line-height: 16px; color: rgb(var(--mu)); }
+
+/* =====================================================================
+   v7 Phase 1
+   - Floating pill navbar with a sliding circular indicator
+   - (...) options menu for list items
+   ===================================================================== */
+:root { --ease-pop: cubic-bezier(.34, 1.45, .64, 1); }
+.pillnav { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); height: 68px; padding: 6px; border-radius: 999px; box-shadow: var(--e3); }
+.pillnav-i { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / var(--n, 5)); display: grid; place-items: center; pointer-events: none;
+  transform: translate3d(calc(var(--i, 0) * 100%), 0, 0); transition: transform .5s var(--ease-pop), opacity .25s; will-change: transform; }
+.pillnav-i::after { content: ''; width: 54px; height: 54px; border-radius: 50%; background-color: rgb(var(--a));
+  background-image: linear-gradient(160deg, rgb(255 255 255 / .28), rgb(255 255 255 / 0) 55%, rgb(0 0 0 / .12));
+  box-shadow: 0 8px 18px -6px rgb(var(--a) / .65), inset 0 1px 0 rgb(255 255 255 / .35); transition: transform .3s var(--ease-pop); }
+.pillnav-i.off { opacity: 0; } .pillnav-i.off::after { transform: scale(.6); }
+.pn-btn { position: relative; z-index: 1; display: grid; place-items: center; height: 56px; border-radius: 999px; color: rgb(var(--mu)); transition: color .3s var(--ease-out); -webkit-user-select: none; user-select: none; }
+.pn-btn svg { transition: transform .45s var(--ease-pop); }
+.pn-btn.on { color: rgb(var(--on-a)); }
+.pn-btn.on svg { transform: scale(1.1); }
+.pn-btn:active svg { transform: scale(.86); }
+.pn-btn:focus-visible { outline-offset: -4px; }
+
+.opt-menu { position: fixed; z-index: 80; width: 232px; padding: 6px; border-radius: 1.25rem; transform-origin: top right; animation: optpop .18s var(--ease-out) both;
+  background-color: rgb(var(--s1) / .96); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgb(var(--fg) / .12); box-shadow: var(--e3); }
+.opt-menu.up { transform-origin: bottom right; }
+@keyframes optpop { from { opacity: 0; transform: scale(.92) translate3d(0, -4px, 0); } }
+.opt-i { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: .9rem; text-align: left; font-size: 14px; font-weight: 500; color: rgb(var(--fg)); transition: background .15s; }
+.opt-i:hover, .opt-i:active { background: rgb(var(--fg) / .07); }
+.opt-i svg { color: rgb(var(--mu)); flex: none; }
+.opt-i.danger, .opt-i.danger svg { color: rgb(var(--neg)); }
+.opt-i.danger:hover, .opt-i.danger:active { background: rgb(var(--neg) / .12); }
 </style>
 </head>
 <body>

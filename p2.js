@@ -66,21 +66,22 @@ function TxSheet({ kind: k0, preset, onClose }) {
 }
 
 // Add or edit a payable / receivable. The category list ends with "+ Add New Source".
-function DebtSheet({ kind, item, preset, fill, onClose }) {
+function DebtSheet({ kind, item, preset, fill, lock, onClose }) {
   const { S, addDebt, updDebt, set } = useApp(), cats = catsFor(S, kind), pay = kind === 'payable'
   const F = fill || {}
-  const [f, setF] = useState({ party: item ? item.party : F.party || '', total: item ? String(item.total) : F.total || '', due: item ? item.due : F.due || off(14), cat: item ? item.cat : preset || cats[0] || '__new', nc: '' }), [m, setM] = useState('')
+  const [f, setF] = useState({ party: item ? item.party : F.party || '', total: item ? String(item.total) : F.total || '', due: item ? item.due : F.due || off(14), cat: item ? item.cat : preset || cats[0] || '__new', nc: '', rec: !!(item && isRecur(item)), freq: item && isRecur(item) ? item.frequency : 'monthly', vary: !!(item && item.isVariableAmount) }), [m, setM] = useState('')
   const u = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const all = item && !cats.includes(item.cat) ? [...cats, item.cat] : cats
   const save = () => {
     const nc = f.nc.trim(), isNew = f.cat === '__new', hit = all.find((x) => x.toLowerCase() === nc.toLowerCase()), cat = isNew ? hit || nc : f.cat
     if (!f.party.trim()) return setM('Enter a name or description.')
-    if (!money(f.total) || +f.total <= 0) return setM('Enter an amount greater than zero with at most two decimals.')
+    const wait = !!item && needsAmt(item) && f.rec && f.vary && !String(f.total).trim() // a generated variable item may stay at ₱0 until its amount is known
+    if (!wait && (!money(f.total) || +f.total <= 0)) return setM('Enter an amount greater than zero with at most two decimals.')
     if (item && +f.total < (item.paid || 0)) return setM('The total can’t be lower than the ' + php(item.paid) + ' already settled.')
     if (!cat) return setM('Name the new source.')
     if (!f.due) return setM('Pick a due date.')
     if (isNew && !hit) set({ srcs: [...(S.srcs || []), { kind, name: nc }] })
-    const p = { party: f.party.trim(), total: +f.total, due: f.due, cat }
+    const p = { party: f.party.trim(), total: wait ? 0 : +f.total, due: f.due, cat, isRecurring: f.rec, ...(f.rec ? { frequency: f.freq, isVariableAmount: f.vary, recurDay: +f.due.slice(8), needsAmount: wait } : {}) }
     item ? updDebt(item.id, p) : addDebt({ kind, wallet: S.wallets[0].id, ...p })
     onClose()
   }
@@ -89,13 +90,62 @@ function DebtSheet({ kind, item, preset, fill, onClose }) {
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save() }}>
         <Field label={pay ? 'Who or what do you owe?' : 'Who owes you?'}><input className="field" autoFocus maxLength={40} placeholder={pay ? 'e.g. Phone installment' : 'e.g. Monthly allowance'} value={f.party} onChange={u('party')} /></Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Total (PHP)"><input className="field" inputMode="decimal" placeholder="0.00" value={f.total} onChange={u('total')} /></Field>
+          <Field label={f.rec && f.vary ? 'Expected total (PHP)' : 'Total (PHP)'}><input className="field" inputMode="decimal" placeholder="0.00" value={f.total} onChange={u('total')} /></Field>
           <Field label="Due date"><input className="field" type="date" value={f.due} onChange={u('due')} /></Field>
         </div>
-        <Field label="Category"><select className="field" value={f.cat} onChange={u('cat')}>{all.map((x) => <option key={x}>{x}</option>)}<option value="__new">+ Add New Source</option></select></Field>
+        {lock && !item
+          ? <div className="glass-tile p-3 flex items-center justify-between gap-3"><span className="text-sm text-mu">Source</span><span className="font-semibold truncate">{f.cat}</span></div>
+          : <Field label="Source"><select className="field" value={f.cat} onChange={u('cat')}>{all.map((x) => <option key={x}>{x}</option>)}<option value="__new">+ Add New Source</option></select></Field>}
         {f.cat === '__new' && <Field label="New source name"><input className="field" maxLength={24} placeholder="e.g. Credit Card" value={f.nc} onChange={u('nc')} /></Field>}
+        <div className="glass-tile p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0"><div className="text-sm font-medium">Recurring</div><div className="text-xs text-mu">{pay ? 'The next bill is created when this one is paid.' : 'The next one is created when this is received.'}</div></div>
+            <button type="button" role="switch" aria-checked={f.rec} aria-label="Recurring" onClick={() => setF({ ...f, rec: !f.rec })} className={'relative shrink-0 w-12 h-7 rounded-full transition-colors ' + (f.rec ? 'bg-ac' : 'bg-fg/25')}>
+              <i className={'absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ' + (f.rec ? 'translate-x-5' : '')} />
+            </button>
+          </div>
+          {f.rec && (
+            <div className="space-y-3 fade">
+              <Field label="Repeats"><select className="field" value={f.freq} onChange={u('freq')}>{FREQS.map((x) => <option key={x} value={x}>{FREQ_LABEL[x]}</option>)}</select></Field>
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+                <input type="checkbox" className="mt-0.5 w-4 h-4 shrink-0" checked={f.vary} onChange={(e) => setF({ ...f, vary: e.target.checked })} />
+                <span><span className="font-medium">Variable amount</span><span className="block text-xs text-mu">The amount changes each cycle (like a utility bill). The next one starts at {php(0)} and asks you to set the amount.</span></span>
+              </label>
+            </div>
+          )}
+        </div>
         <Err m={m} />
         <button type="submit" className="btn btn-p w-full">{item ? 'Save changes' : 'Add ' + kind}</button>
+      </form>
+    </Sheet>
+  )
+}
+
+// Add a source (a group such as "Credit Card" or "Mom") or rename one. A source is either a payable source (money you owe) or a receivable source (money owed to you).
+function SourceSheet({ item, onClose }) {
+  const { S, addSrc, renameSrc } = useApp()
+  const [name, setName] = useState(item ? item.name : ''), [kind, setKind] = useState(item ? item.kind : 'payable'), [m, setM] = useState('')
+  const save = () => {
+    const n = name.trim()
+    if (!n) return setM('Name the source.')
+    if (item && n === item.name) return onClose()
+    if (hasSrc(S.srcs || [], kind, n) && !(item && n.toLowerCase() === item.name.toLowerCase())) return setM('You already have a ' + kind + ' source called “' + n + '”.')
+    item ? renameSrc(item.kind, item.name, n) : addSrc(kind, n)
+    onClose()
+  }
+  return (
+    <Sheet title={item ? 'Edit name' : 'Add source'} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save() }}>
+        {!item && (
+          <Field label="Type">
+            <div className="grid grid-cols-2 gap-2">
+              {[['payable', 'Payable', 'Money you owe'], ['receivable', 'Receivable', 'Money owed to you']].map(([k, l, h]) => <button type="button" key={k} onClick={() => setKind(k)} aria-pressed={kind === k} className={'btn flex-col !gap-0.5 !rounded-2xl !py-3 ' + (kind === k ? 'btn-p' : '')}><span>{l}</span><span className="text-[11px] opacity-80 font-normal">{h}</span></button>)}
+            </div>
+          </Field>
+        )}
+        <Field label="Source name" hint={item ? 'Everything inside this source keeps its place.' : 'Add payables or receivables inside it afterwards.'}><input className="field" autoFocus maxLength={24} placeholder={kind === 'payable' ? 'e.g. Credit Card' : 'e.g. Family'} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Err m={m} />
+        <button type="submit" className="btn btn-p w-full">{item ? 'Save name' : 'Add source'}</button>
       </form>
     </Sheet>
   )
@@ -119,8 +169,56 @@ function PaySheet({ item, onClose }) {
         <Field label="Amount (PHP)" hint="Partial amounts are fine."><input className="field" autoFocus inputMode="decimal" placeholder="0.00" value={v} onChange={(e) => setV(e.target.value)} /></Field>
         <button type="button" className="btn !py-1.5 !text-xs" onClick={() => setV(String(pay ? Math.min(left, Math.max(0, c.bal[w])) : left))}>{pay ? 'Pay the most this wallet allows' : 'Full remaining amount'}</button>
         <Field label={pay ? 'Pay from' : 'Receive into'}><select className="field" value={w} onChange={(e) => setW(e.target.value)}><WOpts ws={S.wallets} c={c} /></select></Field>
+        {isRecur(item) && <p className="text-xs text-mu flex items-center gap-1.5"><Ic n="repeat" s={12} />{FREQ_LABEL[item.frequency]} · once this is fully {pay ? 'paid' : 'received'}, the next one is created for {fd(nextDue(item.due, item.frequency, item.recurDay))}{item.isVariableAmount ? ' at ' + php(0) + ' (you set the amount)' : ''}.</p>}
         <Err m={m} />
         <button type="submit" className="btn btn-p w-full">{pay ? 'Record payment' : 'Record receipt'}</button>
+      </form>
+    </Sheet>
+  )
+}
+
+/* v8 P1: lock money from one or more wallets for a single payable. Nothing leaves the wallet; the locked total just comes out of Spendable. */
+function AllocSheet({ item, onClose }) {
+  const { S, c, setAllocations } = useApp(), d = S.debts.find((x) => x.id === item.id) || item
+  const left = Math.max(0, rem(d)), cur = Object.fromEntries((d.allocations || []).map((x) => [x.walletId, x.amount]))
+  const [v, setV] = useState(() => Object.fromEntries(S.wallets.map((w) => [w.id, cur[w.id] ? String(cur[w.id]) : ''])))
+  const [m, setM] = useState('')
+  // What a wallet can still lock: its balance minus what OTHER payables already locked in it (this payable's own lock is being edited).
+  const avail = (w) => Math.max(0, q(c.bal[w.id] - (c.lockW[w.id] || 0) + (cur[w.id] || 0)))
+  const num = (w) => (String(v[w.id]).trim() === '' ? 0 : money(v[w.id]) ? q(+v[w.id]) : NaN)
+  const nums = S.wallets.map(num), bad = nums.some((n) => Number.isNaN(n)), total = q(nums.reduce((a, n) => a + (n || 0), 0)), had = (d.allocations || []).length > 0
+  const set = (id, x) => { setV({ ...v, [id]: x }); setM('') }
+  const fill = (w) => { const others = q(S.wallets.reduce((a, o) => a + (o.id === w.id ? 0 : num(o) || 0), 0)); set(w.id, String(Math.max(0, Math.min(avail(w), q(left - others))) || '')) }
+  const save = () => {
+    if (bad) return setM('Use amounts with at most two decimals, or leave a wallet empty.')
+    const over = S.wallets.find((w, i) => nums[i] > avail(w)); if (over) return setM(over.name + ' only has ' + php(avail(over)) + ' free to lock.')
+    if (total > left) return setM('That’s more than the remaining ' + php(left) + ' for this payable.')
+    setAllocations(d.id, S.wallets.map((w, i) => ({ walletId: w.id, amount: nums[i] })).filter((x) => x.amount > 0)); onClose()
+  }
+  return (
+    <Sheet title={had ? 'Edit allocation' : 'Allocate funds'} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save() }}>
+        <div className="glass-tile p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="font-semibold truncate">{d.party}</div><div className="text-xs text-mu">{d.cat} · {dueTxt(d.due)}</div></div><div className="text-right shrink-0"><div className="text-[11px] text-mu">Remaining</div><div className="font-semibold tabular-nums">{php(left)}</div></div></div>
+          <Bar pct={left ? (Math.min(total, left) / left) * 100 : 0} />
+          <div className={'text-xs tabular-nums ' + (total > left ? 'text-neg' : 'text-mu')}>{php(total)} / {php(left)} allocated</div>
+        </div>
+        <p className="text-xs text-mu">Locked money stays in its wallet until you pay, but it is taken out of your Spendable balance.</p>
+        <div className="space-y-2.5">
+          {S.wallets.map((w) => (
+            <div key={w.id} className="glass-tile p-3">
+              <div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium truncate min-w-0">{w.name}</span><span className="text-xs text-mu tabular-nums shrink-0">Free to lock {php(avail(w))}</span></div>
+              <div className="flex items-center gap-2 mt-2">
+                <input className="field flex-1 min-w-0" inputMode="decimal" placeholder="0.00" aria-label={'Amount to lock from ' + w.name} value={v[w.id]} onChange={(e) => set(w.id, e.target.value)} />
+                <button type="button" className="btn !py-1.5 !px-2.5 !text-[11px] shrink-0" onClick={() => fill(w)}>Max</button>
+                {String(v[w.id]).trim() !== '' && <button type="button" className="btn !py-1.5 !px-2.5 !text-[11px] shrink-0" aria-label={'Clear ' + w.name} onClick={() => set(w.id, '')}>Clear</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <Err m={m} />
+        <button type="submit" className="btn btn-p w-full"><Ic n="lock" s={16} />{had ? 'Save allocation' : 'Lock funds'}</button>
+        {had && <button type="button" className="btn w-full text-neg" onClick={() => { setAllocations(d.id, []); onClose() }}>Remove allocation</button>}
       </form>
     </Sheet>
   )
@@ -220,8 +318,10 @@ function ReportSheet({ onClose }) {
 
 function P2Sheets({ sheet: s, onClose }) {
   if (s.k === 'tx') return <TxSheet kind={s.kind} preset={s.preset} onClose={onClose} />
-  if (s.k === 'debt') return <DebtSheet kind={s.kind} item={s.item} preset={s.preset} fill={s.fill} onClose={onClose} />
+  if (s.k === 'debt') return <DebtSheet kind={s.kind} item={s.item} preset={s.preset} fill={s.fill} lock={s.lock} onClose={onClose} />
+  if (s.k === 'source') return <SourceSheet item={s.item} onClose={onClose} />
   if (s.k === 'pay') return <PaySheet item={s.item} onClose={onClose} />
+  if (s.k === 'alloc') return <AllocSheet item={s.item} onClose={onClose} />
   if (s.k === 'goal') return <GoalSheet item={s.item} onClose={onClose} />
   if (s.k === 'gmoney') return <MoneySheet item={s.item} onClose={onClose} />
   if (s.k === 'report') return <ReportSheet onClose={onClose} />
@@ -240,95 +340,193 @@ function QuickAddSheet({ onClose, openSheet }) {
 }
 
 /* ---------- Pending ---------- */
-// Phase 3: every payable / receivable has its own clearly visible Delete button (red, with a bin icon and the word "Delete").
-// It asks once, inline, before removing the item together with its payment history.
-function DebtDelete({ d, onYes }) {
-  const [on, setOn] = useState(false)
-  return (
-    <div className="pt-3 border-t border-bd/60">
-      {!on ? (
-        <button type="button" className="btn btn-d w-full !py-2 !text-sm" aria-label={'Delete ' + d.party} onClick={() => setOn(true)}><Ic n="trash" s={16} />Delete</button>
-      ) : (
-        <div className="space-y-2 fade" role="alert">
-          <p className="text-sm text-neg">Delete “{d.party}”? {(d.payments || []).length ? 'Its payment history is deleted too and those payments go back to your wallets. ' : ''}This can’t be undone.</p>
-          <div className="flex gap-2">
-            <button type="button" className="btn flex-1" onClick={() => setOn(false)}>Cancel</button>
-            <button type="button" className="btn btn-d flex-1 !bg-neg !text-white" onClick={onYes}><Ic n="trash" s={16} />Yes, delete</button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
+// v7: edit and delete live in the standard (...) options menu on every payable / receivable (see OptionsMenu in ui.js).
+const UndoBtn = ({ onClick, label }) => <button type="button" className="btn !py-1 !px-2 !text-[11px] shrink-0" aria-label={label} title="Reverse this entry and restore the balance" onClick={onClick}><Ic n="undo" s={12} />Undo</button>
 function DebtRow({ d, openSheet }) {
-  const { S, delDebt } = useApp(), [h, setH] = useState(false)
-  const pay = d.kind === 'payable', r = rem(d), done = r <= 0, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
+  const { S, delDebt, undoPay, setAllocations } = useApp(), [h, setH] = useState(false)
+  const pay = d.kind === 'payable', r = rem(d), lk = lockOf(d), ask = needsAmt(d), done = r <= 0 && !ask, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
   return (
     <div className="glass-tile p-3.5 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><div className="font-medium truncate">{d.party}</div><div className={'text-xs ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? 'Settled' : dueTxt(d.due)} · {fd(d.due)}</div></div>
-        <div className="text-right shrink-0"><div className="font-semibold tabular-nums">{php(Math.max(0, r))}</div><div className="text-[11px] text-mu">of {php(d.total)}</div></div>
+        <div className="min-w-0"><div className="flex items-center gap-1.5 min-w-0"><span className="font-medium truncate">{d.party}</span>{isRecur(d) && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} />{FREQ_LABEL[d.frequency]}</span>}</div><div className={'text-xs ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? 'Settled' : dueTxt(d.due)} · {fd(d.due)}</div></div>
+        <div className="text-right shrink-0">{ask ? <span className="inline-flex items-center gap-1 rounded-full bg-neg/15 text-neg text-[11px] font-semibold px-2 py-0.5"><Ic n="alert" s={12} />Set Amount</span> : <><div className="font-semibold tabular-nums">{php(Math.max(0, r))}</div><div className="text-[11px] text-mu">of {php(d.total)}</div></>}</div>
       </div>
-      <Bar pct={((d.paid || 0) / d.total) * 100} />
+      {!ask && <Bar pct={d.total > 0 ? ((d.paid || 0) / d.total) * 100 : 0} />}
+      {pay && !done && lk > 0 && (
+        <div className="space-y-1.5" aria-label={php(lk) + ' of ' + php(r) + ' allocated'}>
+          <div className="flex items-center justify-between gap-2 text-xs"><span className={'inline-flex items-center gap-1 font-medium ' + (lk >= r ? 'text-pos' : 'text-ac')}><Ic n="lock" s={12} />{php(lk)} / {php(r)} Allocated</span><span className="text-mu">{lk >= r ? 'Fully locked' : php(q(r - lk)) + ' unlocked'}</span></div>
+          <Bar gray pct={(lk / r) * 100} />
+          <div className="text-[11px] text-mu truncate">{(d.allocations || []).filter((x) => W[x.walletId]).map((x) => W[x.walletId] + ' ' + php(x.amount)).join(' · ')}</div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
-        {!done && <button className="btn btn-p !py-1.5 !px-3 !text-xs" onClick={() => openSheet({ k: 'pay', item: d })}>{pay ? 'Pay' : 'Receive'}</button>}
+        {ask && <button className="btn btn-p !py-1.5 !px-3 !text-xs" onClick={() => openSheet({ k: 'debt', kind: d.kind, item: d })}><Ic n="pen" s={14} />Set Amount</button>}
+        {!done && !ask && <button className="btn btn-p !py-1.5 !px-3 !text-xs" onClick={() => openSheet({ k: 'pay', item: d })}>{pay ? 'Pay' : 'Receive'}</button>}
         <button className="btn !py-1.5 !px-3 !text-xs" aria-expanded={h} onClick={() => setH(!h)}><Ic n="hist" s={14} />{h ? 'Hide history' : 'View history'}</button>
-        <button className="btn btn-i !w-8 !h-8" aria-label={'Edit ' + d.party} onClick={() => openSheet({ k: 'debt', kind: d.kind, item: d })}><Ic n="pen" s={14} /></button>
+        <span className="ml-auto"><OptionsMenu label={'Options for ' + d.party} items={[
+          { label: 'Edit', icon: 'pen', onClick: () => openSheet({ k: 'debt', kind: d.kind, item: d }) },
+          ...(pay && !done && !ask ? [{ label: lk > 0 ? 'Edit Allocation' : 'Allocate Funds', icon: 'lock', onClick: () => openSheet({ k: 'alloc', item: d }) }] : []),
+          ...(pay && lk > 0 ? [{ label: 'Remove Allocation', icon: 'trash', onClick: () => setAllocations(d.id, []), confirm: { warn: 'Unlock the ' + php(lk) + ' set aside for “' + d.party + '”? It goes back to your Spendable balance.', yes: 'Yes, remove' } }] : []),
+          { label: 'Delete', icon: 'trash', danger: true, onClick: () => delDebt(d.id), confirm: { warn: 'Delete “' + d.party + '”? ' + ((d.payments || []).length ? 'Its payment history is deleted too and those payments go back to your wallets. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }
+        ]} /></span>
       </div>
-      <DebtDelete d={d} onYes={() => delDebt(d.id)} />
       {h && (
         <div className="space-y-1.5 fade">
-          {(d.payments || []).length ? d.payments.slice().reverse().map((p) => <div key={p.id} className="flex justify-between gap-3 text-xs"><span className="text-mu truncate">{fd(p.date)} · {W[p.wallet] || 'Removed'}</span><span className="tabular-nums">{pay ? '−' : '+'}{php(p.amount)}</span></div>) : <p className="text-xs text-mu">No payments recorded yet.</p>}
+          {(d.payments || []).length ? d.payments.slice().reverse().map((p) => <div key={p.id} className="flex items-center justify-between gap-2 text-xs"><span className="text-mu truncate min-w-0 flex-1">{pay ? 'Paid' : 'Received'} · {fd(p.date)} · {W[p.wallet] || 'Removed'}</span><span className="tabular-nums shrink-0">{pay ? '−' : '+'}{php(p.amount)}</span><UndoBtn onClick={() => undoPay(d.id, p.id)} label={'Undo ' + (pay ? 'payment' : 'receipt') + ' of ' + php(p.amount)} /></div>) : <p className="text-xs text-mu">No payments recorded yet.</p>}
         </div>
       )}
     </div>
   )
 }
 
+/* ---------- v8 Phase 6: Due Date Summary ---------- */
+// Active payables / receivables (something left to settle, amount set) grouped by their exact due date. Each date is a collapsible breakdown with its
+// totals (Total Due, Total to Receive, and the Net when a date has both). Every item has the standard (...) menu, so it can be marked paid /
+// received, edited or deleted without leaving the summary. Dates that are already past are labelled Overdue and sorted first.
+const dueLabel = (d) => {
+  const n = daysTo(d), yr = new Date(d + 'T00:00').getFullYear() !== new Date().getFullYear()
+  const dt = new Date(d + 'T00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: yr ? 'numeric' : undefined })
+  return n === 0 ? 'Due Today' : n === 1 ? 'Due Tomorrow' : n < 0 ? 'Overdue · ' + dt : 'Due ' + dt
+}
+const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + php(Math.abs(n))
+
+function DueItem({ d, openSheet }) {
+  const { delDebt } = useApp(), pay = d.kind === 'payable', r = Math.max(0, rem(d))
+  return (
+    <div className="glass-tile p-3 flex items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 min-w-0"><span className="text-sm font-medium truncate">{d.party}</span>{isRecur(d) && <span className="shrink-0 text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} /></span>}</div>
+        <div className="flex items-center gap-1.5 text-[11px] text-mu min-w-0"><span className={'shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span><span className="truncate">{d.cat}{(d.paid || 0) > 0 ? ' · ' + php(d.paid) + ' of ' + php(d.total) + ' settled' : ''}</span></div>
+      </div>
+      <div className={'text-sm font-semibold tabular-nums shrink-0 ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(r)}</div>
+      <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + d.party} items={[
+        { label: pay ? 'Mark as Paid' : 'Mark as Received', icon: 'check', onClick: () => openSheet({ k: 'pay', item: d }) },
+        { label: 'Edit', icon: 'pen', onClick: () => openSheet({ k: 'debt', kind: d.kind, item: d }) },
+        { label: 'Delete', icon: 'trash', danger: true, onClick: () => delDebt(d.id), confirm: { warn: 'Delete “' + d.party + '”? ' + ((d.payments || []).length ? 'Its payment history is deleted too and those payments go back to your wallets. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }
+      ]} /></div>
+    </div>
+  )
+}
+
+function DueSummary({ openSheet }) {
+  const { S } = useApp(), [open, setOpen] = useState({}), [all, setAll] = useState(true)
+  const act = S.debts.filter((d) => rem(d) > 0 && !needsAmt(d) && d.due)
+  const dates = [...new Set(act.map((d) => d.due))].sort()
+  const groups = dates.map((date) => {
+    const items = act.filter((d) => d.due === date).sort((a, b) => (a.kind === b.kind ? a.party.localeCompare(b.party) : a.kind === 'payable' ? -1 : 1))
+    const pay = q(items.filter((d) => d.kind === 'payable').reduce((a, d) => a + rem(d), 0)), rec = q(items.filter((d) => d.kind === 'receivable').reduce((a, d) => a + rem(d), 0))
+    return { date, items, pay, rec, np: items.filter((d) => d.kind === 'payable').length, nr: items.filter((d) => d.kind === 'receivable').length, late: daysTo(date) < 0, now: daysTo(date) === 0 }
+  })
+  if (!groups.length) return null
+  const isOpen = (g) => (open[g.date] !== undefined ? open[g.date] : g.late || g.now) // today and overdue start expanded; later dates start collapsed
+  const allOpen = groups.every(isOpen)
+  const totPay = q(groups.reduce((a, g) => a + g.pay, 0)), totRec = q(groups.reduce((a, g) => a + g.rec, 0))
+  return (
+    <Glass className="p-4 sm:p-5">
+      <button className="w-full flex items-center justify-between gap-3 text-left" aria-expanded={all} onClick={() => setAll(!all)}>
+        <span className="min-w-0"><span className="block font-semibold">Due Date Summary</span><span className="block text-xs text-mu">{groups.length} date{groups.length === 1 ? '' : 's'} · to pay {php(totPay)} · to receive {php(totRec)}</span></span>
+        <Ic n="chev" s={18} cls={'text-mu shrink-0 transition-transform ' + (all ? 'rotate-180' : '')} />
+      </button>
+      {all && (
+        <div className="mt-4 space-y-2.5 fade">
+          <div className="flex justify-end"><button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setOpen(Object.fromEntries(groups.map((g) => [g.date, !allOpen])))}>{allOpen ? 'Collapse all' : 'Expand all'}</button></div>
+          {groups.map((g) => {
+            const on = isOpen(g), both = g.np > 0 && g.nr > 0, net = q(g.rec - g.pay)
+            return (
+              <div key={g.date} className="rounded-2xl border border-bd/60 bg-s2/40">
+                <button className="w-full flex items-center justify-between gap-3 text-left p-3" aria-expanded={on} onClick={() => setOpen({ ...open, [g.date]: !on })}>
+                  <span className="min-w-0">
+                    <span className={'block text-sm font-semibold ' + (g.late ? 'text-neg' : '')}>{dueLabel(g.date)}</span>
+                    <span className="block text-[11px] text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}{both ? ' · ' + g.np + ' to pay, ' + g.nr + ' to receive' : ''}</span>
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0 text-right">
+                    <span>
+                      {both ? <><span className="block text-sm font-semibold tabular-nums">Net {signed(net)}</span><span className="block text-[11px] text-mu tabular-nums">Pay {php(g.pay)} · Get {php(g.rec)}</span></>
+                        : g.np > 0 ? <><span className="block text-[11px] text-mu">Total Due</span><span className="block text-sm font-semibold tabular-nums text-neg">{php(g.pay)}</span></>
+                        : <><span className="block text-[11px] text-mu">Total to Receive</span><span className="block text-sm font-semibold tabular-nums text-pos">{php(g.rec)}</span></>}
+                    </span>
+                    <Ic n="chev" s={16} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} />
+                  </span>
+                </button>
+                {on && <div className="px-3 pb-3 space-y-2 fade">{g.items.map((d) => <DueItem key={d.id} d={d} openSheet={openSheet} />)}</div>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Glass>
+  )
+}
+
+// v7 final: ONE unified list of sources (no Payables / Receivables switch, no category filter). Each source is a card with its own (...) menu
+// (Edit name, Delete) and its own "Add payable / Add receivable" button. New sources are added from the button at the top.
 function Pending({ openSheet }) {
-  const { S, c } = useApp()
-  const [kind, setKind] = useState('payable'), [cat, setCat] = useState('all'), [open, setOpen] = useState({})
-  const pay = kind === 'payable', mine = S.debts.filter((d) => d.kind === kind), cats = catsFor(S, kind)
-  mine.forEach((d) => { if (!cats.includes(d.cat)) cats.push(d.cat) })
-  const groups = cats.filter((k) => cat === 'all' || k === cat).map((k) => ({ k, items: mine.filter((d) => d.cat === k).sort((a, b) => (rem(a) <= 0) - (rem(b) <= 0) || a.due.localeCompare(b.due)) }))
-  const isOpen = (k) => open[k] !== false // groups start expanded so every item (and its Delete button) is visible
-  const allOpen = groups.length > 0 && groups.every((g) => isOpen(g.k))
-  const late = mine.filter((d) => rem(d) > 0 && d.due < off(0)).length
+  const { S, c, delSrc, undoPay } = useApp()
+  const [open, setOpen] = useState({})
+  const list = (S.srcs || []).map((x) => ({ kind: x.kind, name: x.name }))
+  S.debts.forEach((d) => { if (!list.some((x) => x.kind === d.kind && x.name === d.cat)) list.push({ kind: d.kind, name: d.cat }) }) // items whose source was never listed still show
+  const groups = list.map((x) => ({ ...x, key: x.kind + '|' + x.name, items: S.debts.filter((d) => d.kind === x.kind && d.cat === x.name).sort((a, b) => (rem(a) <= 0) - (rem(b) <= 0) || a.due.localeCompare(b.due)) }))
+  const isOpen = (k) => open[k] !== false // sources start expanded so every item is visible
+  const allOpen = groups.length > 0 && groups.every((g) => isOpen(g.key))
+  const late = S.debts.filter((d) => rem(d) > 0 && d.due < off(0)).length
+  const W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
+  const hist = S.debts.flatMap((d) => (d.payments || []).map((p) => ({ d, p }))).sort((a, b) => b.p.date.localeCompare(a.p.date)).slice(0, 25)
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Tile l="Total payables" v={php(c.pay)} tone={c.pay > 0 ? 'text-neg' : ''} /><Tile l="Total receivables" v={php(c.rec)} tone={c.rec > 0 ? 'text-pos' : ''} />
       </div>
-      <div className="glass !rounded-full p-1 grid grid-cols-2 gap-1" role="tablist">
-        {[['payable', 'Payables'], ['receivable', 'Receivables']].map(([k, l]) => <button key={k} role="tab" aria-selected={kind === k} onClick={() => { setKind(k); setCat('all'); setOpen({}) }} className={'btn !border-transparent ' + (kind === k ? 'btn-p' : '!bg-transparent')}>{l}</button>)}
-      </div>
-      <div className="chips" role="tablist" aria-label="Filter by category">
-        {[['all', 'All'], ...cats.map((k) => [k, k])].map(([k, l]) => <button key={k} role="tab" aria-selected={cat === k} onClick={() => setCat(k)} className={'btn ' + (cat === k ? 'btn-p' : '')}>{l}</button>)}
-        <button className="btn" onClick={() => openSheet({ k: 'debt', kind, item: null, preset: '__new' })}><Ic n="plus" s={14} />Add New Source</button>
-      </div>
+      <DueSummary openSheet={openSheet} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-mu">{late ? <span className="text-neg">{late} overdue</span> : 'Nothing overdue'}</span>
         <div className="flex gap-2">
-          <button className="btn !py-1.5 !text-xs" onClick={() => setOpen({ ...open, ...Object.fromEntries(groups.map((g) => [g.k, !allOpen])) })}>{allOpen ? 'Collapse all' : 'Expand all'}</button>
-          <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'debt', kind, item: null })}><Ic n="plus" s={14} />Add {pay ? 'payable' : 'receivable'}</button>
+          {groups.length > 0 && <button className="btn !py-1.5 !text-xs" onClick={() => setOpen({ ...open, ...Object.fromEntries(groups.map((g) => [g.key, !allOpen])) })}>{allOpen ? 'Collapse all' : 'Expand all'}</button>}
+          <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'source', item: null })}><Ic n="plus" s={14} />Add Source</button>
         </div>
       </div>
-      {!groups.length && <Empty t={'No ' + (pay ? 'payable' : 'receivable') + ' sources yet. Tap “Add New Source” to create your first category, or use “Add ' + (pay ? 'payable' : 'receivable') + '”.'} />}
+      {!groups.length && <Empty t="No sources yet. Tap “Add Source” (for example a credit card or a person), then add payables or receivables inside it." />}
       <div className="space-y-3">
         {groups.map((g) => {
-          const on = isOpen(g.k), t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
+          const on = isOpen(g.key), pay = g.kind === 'payable', t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
           return (
-            <Glass key={g.k} className="p-4 sm:p-5">
-              <button className="w-full flex items-center justify-between gap-3 text-left" aria-expanded={on} onClick={() => setOpen({ ...open, [g.k]: !on })}>
-                <span className="min-w-0"><span className="font-semibold">{g.k}</span><span className="block text-xs text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span></span>
-                <span className="flex items-center gap-2 shrink-0"><span className="font-semibold tabular-nums">{php(t)}</span><Ic n="chev" s={18} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} /></span>
-              </button>
-              {on && <div className="mt-3 space-y-3 fade">{g.items.length ? g.items.map((d) => <DebtRow key={d.id} d={d} openSheet={openSheet} />) : <Empty t={'Nothing in ' + g.k + ' yet.'} />}</div>}
+            <Glass key={g.key} className="p-4 sm:p-5">
+              <div className="flex items-center gap-2">
+                <button className="min-w-0 flex-1 flex items-center justify-between gap-3 text-left" aria-expanded={on} onClick={() => setOpen({ ...open, [g.key]: !on })}>
+                  <span className="min-w-0"><span className="flex items-center gap-2"><span className="font-semibold truncate">{g.name}</span><span className={'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span></span><span className="block text-xs text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span></span>
+                  <span className="flex items-center gap-2 shrink-0"><span className="font-semibold tabular-nums">{php(t)}</span><Ic n="chev" s={18} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} /></span>
+                </button>
+                <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + g.name} items={[
+                  { label: 'Edit Name', icon: 'pen', onClick: () => openSheet({ k: 'source', item: { kind: g.kind, name: g.name } }) },
+                  { label: 'Delete', icon: 'trash', danger: true, onClick: () => delSrc(g.kind, g.name), confirm: { warn: 'Delete “' + g.name + '”? ' + (g.items.length ? 'Its ' + g.items.length + ' item' + (g.items.length === 1 ? '' : 's') + ' and payment history are deleted too, and those payments go back to your wallets. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }
+                ]} /></div>
+              </div>
+              {on && (
+                <div className="mt-3 space-y-3 fade">
+                  {g.items.map((d) => <DebtRow key={d.id} d={d} openSheet={openSheet} />)}
+                  {!g.items.length && <p className="text-sm text-mu text-center py-2">{'Nothing in ' + g.name + ' yet.'}</p>}
+                  <button className="btn w-full !py-2 !text-sm" onClick={() => openSheet({ k: 'debt', kind: g.kind, item: null, preset: g.name, lock: true })}><Ic n="plus" s={15} />{pay ? 'Add payable' : 'Add receivable'}</button>
+                </div>
+              )}
             </Glass>
           )
         })}
       </div>
+      {hist.length > 0 && (
+        <Fold title="Payment history" right={<span>{hist.length} latest</span>}>
+          <div className="space-y-2">
+            {hist.map(({ d, p }) => {
+              const pay = d.kind === 'payable'
+              return (
+                <div key={p.id} className="flex items-center gap-2 text-xs">
+                  <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate">{pay ? 'Paid' : 'Received'} · {d.party}</div><div className="text-mu truncate">{d.cat} · {W[p.wallet] || 'Removed'} · {fd(p.date)}</div></div>
+                  <span className={'tabular-nums font-semibold shrink-0 ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(p.amount)}</span>
+                  <UndoBtn onClick={() => undoPay(d.id, p.id)} label={'Undo ' + (pay ? 'payment' : 'receipt') + ' of ' + php(p.amount) + ' for ' + d.party} />
+                </div>
+              )
+            })}
+          </div>
+        </Fold>
+      )}
     </div>
   )
 }
@@ -338,11 +536,11 @@ function Allocate() {
   const { S, c, setAlloc } = useApp()
   const pays = S.debts.filter((d) => d.kind === 'payable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
   const recs = S.debts.filter((d) => d.kind === 'receivable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
-  const cur = (d) => Math.min(S.alloc['d:' + d.id] || 0, rem(d)), short = (d) => q(rem(d) - cur(d))
+  const room = (d) => Math.max(0, q(rem(d) - lockOf(d))), cur = (d) => Math.min(S.alloc['d:' + d.id] || 0, room(d)), short = (d) => q(rem(d) - lockOf(d) - cur(d)) // wallet locks (Allocate Funds on Pending) count first
   const cash = Math.max(0, c.spendable), totalShort = q(pays.reduce((a, d) => a + short(d), 0))
   const urgent = pays.filter((d) => short(d) > 0 && d.due <= off(14))
   // Smart Plan: fund payables earliest-due first from cash that isn't locked in goals.
-  const smart = () => { let free = Math.max(0, q(c.liquid - c.saved)); const p = {}; pays.forEach((d) => { const a = Math.min(rem(d), free); p['d:' + d.id] = a; free = q(free - a) }); setAlloc(p) }
+  const smart = () => { let free = Math.max(0, q(c.liquid - c.saved - c.locked)); const p = {}; pays.forEach((d) => { const a = Math.min(room(d), free); p['d:' + d.id] = a; free = q(free - a) }); setAlloc(p) }
   const clear = () => setAlloc(Object.fromEntries(pays.map((d) => ['d:' + d.id, 0])))
   const preview = (amt) => { const nc = q(cash + amt), cov = Math.min(nc, totalShort); return { nc, cov, left: q(totalShort - cov), spare: q(nc - cov) } }
   const recAll = q(recs.reduce((a, d) => a + rem(d), 0))
@@ -369,12 +567,12 @@ function Allocate() {
         <p className="text-xs text-mu mt-1">Drag to set aside cash for each payable, earliest due first. Locked money leaves your spendable balance.</p>
         <div className="mt-4 space-y-5">
           {pays.length ? pays.map((d) => {
-            const a = cur(d), mx = q(Math.min(rem(d), a + cash)), s = short(d)
+            const a = cur(d), mx = q(Math.min(room(d), a + cash)), s = short(d)
             return (
               <div key={d.id}>
                 <div className="flex justify-between gap-3 text-sm"><span className="min-w-0 truncate">{d.party}<span className="text-xs text-mu"> · {d.cat} · {dueTxt(d.due)}</span></span><span className="tabular-nums whitespace-nowrap">{php(a)}</span></div>
                 <input type="range" min="0" max={mx} step="0.01" value={Math.min(a, mx)} aria-label={'Amount to allocate to ' + d.party} onChange={(e) => setAlloc({ ['d:' + d.id]: q(Math.min(+e.target.value, mx)) })} />
-                <div className="flex items-center justify-between gap-2 text-xs"><span className={s > 0 ? 'text-neg' : 'text-pos'}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}</span><button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></div>
+                <div className="flex items-center justify-between gap-2 text-xs"><span className={s > 0 ? 'text-neg' : 'text-pos'}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}{lockOf(d) > 0 ? ' · ' + php(lockOf(d)) + ' locked in wallets' : ''}</span><button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></div>
               </div>
             )
           }) : <Empty t="No open payables to plan for." />}
@@ -383,7 +581,7 @@ function Allocate() {
 
       <Fold title="Unallocated cash breakdown" right={<span className="tabular-nums">{php(c.spendable)}</span>}>
         <div className="space-y-2 text-sm">
-          {[['Liquid cash', c.liquid, ''], ['Reserved for payables', -c.allocD, 'text-ac'], ['Locked in savings goals', -c.saved, 'text-ac']].map(([l, v, t]) => <div key={l} className="flex justify-between gap-3"><span className="text-mu">{l}</span><span className={'tabular-nums ' + t}>{v < 0 ? '−' : ''}{php(Math.abs(v))}</span></div>)}
+          {[['Liquid cash', c.liquid, ''], ['Locked in wallets for payables', -c.locked, 'text-ac'], ['Reserved by Smart Plan', -c.allocD, 'text-ac'], ['Locked in savings goals', -c.saved, 'text-ac']].map(([l, v, t]) => <div key={l} className="flex justify-between gap-3"><span className="text-mu">{l}</span><span className={'tabular-nums ' + t}>{v < 0 ? '−' : ''}{php(Math.abs(v))}</span></div>)}
           <div className="flex justify-between gap-3 border-t border-fg/10 pt-2 font-semibold"><span>Spendable</span><span className={'tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}>{php(c.spendable)}</span></div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">{S.wallets.map((w) => <Tile key={w.id} l={w.name} v={php(c.bal[w.id])} tone={c.bal[w.id] < 0 ? 'text-neg' : ''} />)}</div>
@@ -427,8 +625,10 @@ function GoalRow({ g, openSheet }) {
           <Tile l="Remaining" v={php(Math.max(0, q(g.target - g.saved)))} />
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-p !py-1.5 !px-3 !text-xs" disabled={done} onClick={() => openSheet({ k: 'gmoney', item: g })}><Ic n="plus" s={14} />Add money</button>
-            <button className="btn !py-1.5 !px-3 !text-xs" onClick={() => openSheet({ k: 'goal', item: g })}><Ic n="pen" s={14} />Edit</button>
-            <Confirm danger label="Delete" yes="Yes, delete" warn={g.saved > 0 ? 'Deleting this goal releases its ' + php(g.saved) + ' back to your spendable balance.' : 'This goal will be removed.'} onYes={() => delGoal(g.id)} />
+            <span className="ml-auto"><OptionsMenu label={'Options for ' + g.name} items={[
+              { label: 'Edit goal', icon: 'pen', onClick: () => openSheet({ k: 'goal', item: g }) },
+              { label: 'Delete goal', icon: 'trash', danger: true, onClick: () => delGoal(g.id), confirm: { warn: g.saved > 0 ? 'Deleting this goal releases its ' + php(g.saved) + ' back to your spendable balance.' : 'This goal will be removed.', yes: 'Yes, delete' } }
+            ]} /></span>
           </div>
         </div>
       )}

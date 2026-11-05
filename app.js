@@ -8,6 +8,63 @@
    ===================================================================== */
 const NAV = [['home', 'Home', 'home'], ['wallets', 'Wallets', 'wallet'], ['pending', 'Pending', 'swap'], ['plan', 'Allocate', 'pie'], ['goals', 'Goals', 'target']]
 
+const NAV_KEYS = NAV.map((n) => n[0])
+
+/* v7 swipe between tabs. True when the touch began inside something that scrolls sideways or takes horizontal input
+   (inputs, sliders, chip rows, wide tables), so those keep their own gestures. */
+function ownsHorizontal(el, stop) {
+  for (; el && el !== stop; el = el.parentElement) {
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.dataset && el.dataset.noswipe != null)) return true
+    if (el.scrollWidth > el.clientWidth + 2) { const ox = getComputedStyle(el).overflowX; if (ox === 'auto' || ox === 'scroll') return true }
+  }
+  return false
+}
+
+/* Finger-following swipe on the content area. The page drags with the finger (with a rubber band on the first / last tab); past a distance or a quick flick
+   it slides out and the next tab slides in. Only transform + opacity are touched, so it stays on the GPU. Disabled while a sheet is open. */
+function useSwipeTabs(ref, on, view, go, enabled) {
+  const st = useRef({}).current
+  st.view = view; st.go = go; st.enabled = enabled
+  useEffect(() => {
+    const el = ref.current; if (!on || !el) return
+    const reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)
+    const rest = (anim) => {
+      el.style.transition = anim ? 'transform .32s var(--ease-out), opacity .32s' : 'none'
+      el.style.transform = ''; el.style.opacity = ''
+      if (anim) setTimeout(() => { el.style.transition = '' }, 340); else requestAnimationFrame(() => { el.style.transition = '' })
+    }
+    const start = (e) => {
+      st.t = null
+      if (e.touches.length !== 1 || !st.enabled) return
+      const i = NAV_KEYS.indexOf(st.view); if (i < 0 || ownsHorizontal(e.target, el)) return
+      st.t = { x: e.touches[0].clientX, y: e.touches[0].clientY, time: Date.now(), lock: 0, i, raw: 0 }
+    }
+    const move = (e) => {
+      const s = st.t; if (!s) return
+      const dx = e.touches[0].clientX - s.x, dy = e.touches[0].clientY - s.y
+      if (!s.lock) { if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; s.lock = Math.abs(dx) > Math.abs(dy) * 1.3 ? 1 : -1 }
+      if (s.lock !== 1) return
+      s.raw = dx
+      if (reduce) return
+      const edge = (dx > 0 && s.i === 0) || (dx < 0 && s.i === NAV_KEYS.length - 1), d = dx * (edge ? 0.22 : 0.65)
+      el.style.transition = 'none'; el.style.transform = 'translate3d(' + d + 'px,0,0)'; el.style.opacity = String(1 - Math.min(Math.abs(d) / 460, 0.4))
+    }
+    const end = () => {
+      const s = st.t; st.t = null; if (!s || s.lock !== 1) return
+      const dist = Math.abs(s.raw), fast = dist / Math.max(Date.now() - s.time, 1) > 0.5
+      const j = s.i + (s.raw < 0 ? 1 : -1), commit = (dist > 72 || (dist > 32 && fast)) && j >= 0 && j < NAV_KEYS.length
+      if (!commit) return rest(true)
+      if (reduce) { rest(false); return st.go(NAV_KEYS[j]) }
+      el.style.transition = 'transform .14s ease-in, opacity .14s ease-in'; el.style.transform = 'translate3d(' + (s.raw < 0 ? -46 : 46) + 'px,0,0)'; el.style.opacity = '0'
+      setTimeout(() => { rest(false); st.go(NAV_KEYS[j]) }, 130)
+    }
+    const cancel = () => { if (st.t && st.t.lock === 1) rest(true); st.t = null }
+    el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchmove', move, { passive: true })
+    el.addEventListener('touchend', end, { passive: true }); el.addEventListener('touchcancel', cancel, { passive: true })
+    return () => { el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', cancel) }
+  }, [on])
+}
+
 /* Title that wraps instead of truncating. It starts at `max` px and steps down toward `min` px until it fits in `lines` lines;
    if it still needs more lines at the minimum size, it simply wraps further (it is never cut off with an ellipsis). */
 function FitTitle({ text, max = 30, min = 18, lines = 2 }) {
@@ -33,7 +90,10 @@ function App() {
   const { S, c, ready, user, guest, sync, addTx, delTx } = useApp()
   const [view, setView] = useState('home'), [sheet, setSheet] = useState(null), [toast, setToast] = useState(null)
   const openSheet = (s) => setSheet(s), closeSheet = () => setSheet(null)
-  const goto = (v) => { setView(v); window.scrollTo({ top: 0 }) }
+  const [dir, setDir] = useState(0), swipe = useRef(null)
+  // dir tells the page transition which side the new tab comes from (+1 = from the right, -1 = from the left, 0 = Settings / deep links).
+  const goto = (v) => { const a = NAV_KEYS.indexOf(view), b = NAV_KEYS.indexOf(v); setDir(a < 0 || b < 0 ? 0 : b > a ? 1 : -1); setView(v); window.scrollTo({ top: 0 }) }
+  useSwipeTabs(swipe, ready && (!!user || guest), view, goto, !sheet)
 
   // Fades in the status-bar guard (see .safe-top in index.html) once the page has scrolled.
   useEffect(() => {
@@ -121,19 +181,19 @@ function App() {
             <button aria-label="Settings" title="Settings" onClick={() => goto('settings')} className={'btn btn-i ' + (view === 'settings' ? '!bg-ac/20 !text-ac !border-ac/30' : '')}><Ic n="gear" s={18} /></button>
           </div>
         </header>
-        <div key={view} className="page-in">{page}</div>
+        <div ref={swipe} className="swipe-area">
+          <div key={view} className={'page-in' + (dir > 0 ? ' from-r' : dir < 0 ? ' from-l' : '')}>{page}</div>
+        </div>
       </main>
 
-      {/* Phone: rounded-square FAB + floating Material navigation bar */}
-      <button className="rail:hidden fab fixed right-4 z-40 w-14 h-14" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 92px)' }} aria-label="Quick add" onClick={() => openSheet({ k: 'quick' })}><Ic n="plus" s={26} /></button>
-      <nav className="rail:hidden navbar fixed left-1/2 -translate-x-1/2 z-40 w-[calc(100%-1.5rem)] max-w-md !rounded-[1.75rem] px-2 py-2 flex gap-1" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 12px)' }} aria-label="Main">
+      {/* Phone: rounded-square FAB + floating pill navigation. A solid accent circle slides under the active icon (CSS var --i = active index). */}
+      <button className="rail:hidden fab fixed right-4 z-40 w-14 h-14" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 98px)' }} aria-label="Quick add" onClick={() => openSheet({ k: 'quick' })}><Ic n="plus" s={26} /></button>
+      <nav className="rail:hidden navbar pillnav fixed left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2.5rem)] max-w-sm" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 14px)', '--i': Math.max(0, NAV_KEYS.indexOf(view)), '--n': NAV.length }} aria-label="Main">
+        <i className={'pillnav-i' + (NAV_KEYS.indexOf(view) < 0 ? ' off' : '')} aria-hidden="true" />
         {NAV.map(([k, l, ic]) => {
           const on = view === k
           return (
-            <button key={k} aria-label={l} aria-current={on ? 'page' : undefined} onClick={() => goto(k)} className="flex-1 min-w-0 flex flex-col items-center gap-1 py-1">
-              <span className={'grid place-items-center h-8 w-full max-w-[4rem] rounded-full transition-colors ' + (on ? 'bg-ac/25 text-ac' : 'text-mu')}><Ic n={ic} s={21} /></span>
-              <span className={'text-[11px] leading-none ' + (on ? 'font-bold text-fg' : 'font-medium text-mu')}>{l}</span>
-            </button>
+            <button key={k} aria-label={l} title={l} aria-current={on ? 'page' : undefined} onClick={() => goto(k)} className={'pn-btn' + (on ? ' on' : '')}><Ic n={ic} s={23} /></button>
           )
         })}
       </nav>
@@ -142,6 +202,7 @@ function App() {
       {sheet && sheet.k === 'quick' && <QuickAddSheet onClose={closeSheet} openSheet={openSheet} />}
       {sheet && sheet.k === 'wallet' && <WalletSheet item={sheet.item} onClose={closeSheet} />}
       {sheet && sheet.k === 'balance' && <BalanceSheet item={sheet.item} onClose={closeSheet} />}
+      {sheet && sheet.k === 'color' && <WalletColorSheet item={sheet.item} onClose={closeSheet} />}
       {sheet && <P2Sheets sheet={sheet} onClose={closeSheet} />}
       {sheet && <P3Sheets sheet={sheet} onClose={closeSheet} openSheet={openSheet} />}
       {sheet && sheet.k === 'data' && <DataSheet onClose={closeSheet} />}

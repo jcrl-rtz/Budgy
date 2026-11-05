@@ -69,7 +69,7 @@ function CardSettings({ onClose }) {
   )
 }
 
-function NetWorthCard() {
+function NetWorthCard({ onPin }) {
   const { S, c } = useApp()
   const [hide, setHide] = useState(false), [edit, setEdit] = useState(false)
   const card = useRef(null), gear = useRef(null)
@@ -121,6 +121,7 @@ function NetWorthCard() {
             <div className="nc-row">
               <div className="nc-brand"><span><Ic n="sparkle" s={11} /></span>Budgy</div>
               <div className="nc-tools">
+                {onPin && <button type="button" className="nc-eye" aria-haspopup="dialog" aria-label="Change pinned card" title="Change pinned card" onClick={onPin}><Ic n="pin" s={16} /></button>}
                 <button type="button" ref={gear} className="nc-eye" aria-haspopup="dialog" aria-label="Customize card" title="Customize card" onClick={() => setEdit(true)}><Ic n="gear" s={16} /></button>
                 <button type="button" className="nc-eye" aria-pressed={hide} aria-label={hide ? 'Show amounts' : 'Hide amounts'} title={hide ? 'Show amounts' : 'Hide amounts'} onClick={() => setHide(!hide)}>
                   {hide
@@ -199,23 +200,68 @@ function NetWorthCard() {
 }
 
 /* ---------- Home ---------- */
-// v6 compact layout: the Net Worth card + Statement, ONE overview card (this month + funds + outlook), three quick-action pills,
-// then small cards (top spending, goals) side by side and a four-row activity list. Sections with no data are not rendered.
+// v7 Phase 2: the big card at the top is whichever metric the user PINS (S.homePin, default Net worth). Every other metric becomes a small
+// summary card below it with a (...) button: "Pin to top" swaps it with the pinned one. Net worth keeps its credit-card look when pinned.
+const HOME_DEFS = {
+  net: { name: 'Net worth', hint: 'Cash + receivables − payables' },
+  liquid: { name: 'Liquid cash', hint: 'Money across all your wallets', go: ['Open Wallets', 'wallets'] },
+  spendable: { name: 'Spendable', hint: 'Cash left after allocations', go: ['Open Allocate', 'plan'] },
+  spent: { name: 'Spent this month', hint: 'Expenses so far this month' },
+  payables: { name: 'Total payables', hint: 'Everything you still owe', go: ['Open Pending', 'pending'] },
+  receivables: { name: 'Receivables', hint: 'Money others still owe you', go: ['Open Pending', 'pending'] },
+  allocated: { name: 'Allocated', hint: 'Set aside for payables and goals', go: ['Open Allocate', 'plan'] },
+  projected: { name: 'Projected month-end', hint: 'Cash by the end of the month', go: ['Open Allocate', 'plan'] },
+  pending: { name: 'Pending net', hint: 'Scheduled income minus expenses', go: ['Open Pending', 'pending'] }
+}
+const homeValue = (k, c) => ({ net: c.net, liquid: c.liquid, spendable: c.spendable, spent: c.spent, payables: c.pay, receivables: c.rec, allocated: c.allocated, projected: c.projected, pending: c.pend })[k]
+const homeTone = (k, v) => (k === 'spent' ? 'text-neg' : k === 'pending' ? (v < 0 ? 'text-neg' : v > 0 ? 'text-pos' : '') : k === 'allocated' ? 'text-ac' : v < 0 ? 'text-neg' : '')
+const homeText = (k, v) => (k === 'pending' ? (v > 0 ? '+' : v < 0 ? '−' : '') + php(Math.abs(v)) : php(v))
+
+// "Pin a card" sheet: choose which metric is highlighted at the top of Home.
+function PinSheet({ onClose }) {
+  const { S, c, set } = useApp(), cur = HOME_KEYS.includes(S.homePin) ? S.homePin : 'net'
+  return (
+    <Sheet title="Pin a card" onClose={onClose}>
+      <p className="text-sm text-mu -mt-1 mb-3">The pinned card is shown large at the top of Home. All the others become small cards below it.</p>
+      <ul className="space-y-2" role="radiogroup" aria-label="Pinned card">
+        {HOME_KEYS.map((k) => {
+          const v = homeValue(k, c), on = k === cur
+          return (
+            <li key={k}>
+              <button type="button" role="radio" aria-checked={on} onClick={() => { set({ homePin: k }); onClose() }} className={'glass-tile w-full flex items-center gap-3 p-3 text-left transition-transform active:scale-[.98] ' + (on ? 'ring-2 ring-ac' : '')}>
+                <span className={'grid place-items-center w-8 h-8 rounded-full shrink-0 ' + (on ? 'bg-ac text-white' : 'bg-fg/10 text-mu')}><Ic n={on ? 'check' : 'pin'} s={15} /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-medium truncate">{HOME_DEFS[k].name}</span><span className="block text-xs text-mu truncate">{HOME_DEFS[k].hint}</span></span>
+                <span className={'text-sm font-semibold tabular-nums shrink-0 ' + homeTone(k, v)}>{homeText(k, v)}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </Sheet>
+  )
+}
+
 function Home({ goto, openSheet }) {
-  const { S, c, ui, loadSample } = useApp()
+  const { S, c, ui, loadSample, set, undoPay } = useApp()
+  const [pinOpen, setPinOpen] = useState(false)
   const t0 = off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w]))
   const cats = Object.entries(c.cat).sort((a, b) => b[1] - a[1])
   const empty = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.every((w) => !+w.balance)
   const entries = [
     ...S.tx.filter((x) => x.date <= t0).map((x) => ({ id: x.id, type: x.type, title: x.note || x.category, sub: x.category + ' · ' + ((W[x.wallet] || {}).name || 'Removed') + (x.type === 'transfer' ? ' → ' + ((W[x.to] || {}).name || '?') : ''), amount: x.amount, date: x.date })),
-    ...S.debts.flatMap((d) => (d.payments || []).map((p) => ({ id: p.id, type: d.kind === 'payable' ? 'expense' : 'income', title: (d.kind === 'payable' ? 'Paid · ' : 'Received · ') + d.party, sub: d.cat + ' · ' + ((W[p.wallet] || {}).name || 'Removed'), amount: p.amount, date: p.date })))
+    ...S.debts.flatMap((d) => (d.payments || []).map((p) => ({ id: p.id, type: d.kind === 'payable' ? 'expense' : 'income', title: (d.kind === 'payable' ? 'Paid · ' : 'Received · ') + d.party, sub: d.cat + ' · ' + ((W[p.wallet] || {}).name || 'Removed'), amount: p.amount, date: p.date, undo: [d.id, p.id] })))
   ].sort((a, b) => b.date.localeCompare(a.date))
   const pal = palette(ui.accent, Math.max(cats.length, 1))
   const goalPct = (c.saved / Math.max(c.target, 1)) * 100
   const actions = [['Expense', 'down', 'expense'], ['Income', 'up', 'income'], ['Transfer', 'swap', 'transfer']]
   const showCats = cats.length > 0, showGoals = S.goals.length > 0, showRecent = entries.length > 0
   const topCats = cats.slice(0, 5), catSum = Math.max(topCats.reduce((a, [, v]) => a + v, 0), 1)
-  const sgn = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + php(Math.abs(v))
+
+  const pin = HOME_KEYS.includes(S.homePin) ? S.homePin : 'net'
+  const hv = homeValue(pin, c), hd = HOME_DEFS[pin]
+  // On a brand-new empty budget the planning figures would all read zero, so they stay out of the small cards.
+  const small = HOME_KEYS.filter((k) => k !== pin && !(empty && ['allocated', 'projected', 'pending'].includes(k)))
+  const goItem = (k) => (HOME_DEFS[k].go ? [{ label: HOME_DEFS[k].go[0], icon: 'right', onClick: () => goto(HOME_DEFS[k].go[1]) }] : [])
 
   return (
     <div className="space-y-3">
@@ -227,8 +273,27 @@ function Home({ goto, openSheet }) {
         </Glass>
       )}
 
-      {/* Net Worth credit card + compact statement */}
-      <NetWorthCard />
+      {/* Pinned card (large). Net worth keeps its credit-card look; every other metric gets a big summary card. */}
+      {pin === 'net' ? (
+        <NetWorthCard onPin={() => setPinOpen(true)} />
+      ) : (
+        <Glass i={0} className="p-5 sm:p-6" style={{ background: 'linear-gradient(135deg, rgb(var(--a) / .24), rgb(var(--s1) / .5) 72%)', borderColor: 'rgb(var(--a) / .32)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-sm text-mu"><Ic n="pin" s={14} /><span className="truncate">{hd.name}</span></div>
+              <div className={'text-3xl sm:text-4xl font-semibold tracking-tight mt-1 tabular-nums ' + homeTone(pin, hv)}>{pin === 'pending' ? homeText(pin, hv) : <Num v={hv} />}</div>
+              <div className="text-xs text-mu mt-1">{pin === 'spent' ? 'Spent in ' + c.monthName : hd.hint}</div>
+            </div>
+            <OptionsMenu label={'Options for pinned ' + hd.name} items={[{ label: 'Change pinned card', icon: 'pin', onClick: () => setPinOpen(true) }, ...goItem(pin)]} />
+          </div>
+          {pin === 'spent' && (
+            <div className="mt-4">
+              <Bar pct={c.monthPct} />
+              <div className="flex items-center justify-between gap-3 mt-2 text-[11px] text-mu"><b className="text-fg font-semibold">{c.left === 0 ? 'Last day' : c.left + ' day' + (c.left === 1 ? '' : 's') + ' left'}</b><span className="tabular-nums">forecast {php(c.fc)}</span></div>
+            </div>
+          )}
+        </Glass>
+      )}
 
       {/* Quick actions: always three across, never truncated */}
       <div className="grid grid-cols-3 gap-2">
@@ -239,28 +304,21 @@ function Home({ goto, openSheet }) {
         ))}
       </div>
 
-      {/* One overview card: this month + funds + outlook */}
-      <Glass i={2} className="p-3.5 sm:p-4">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0"><div className="text-[11px] text-mu">Spent in {c.monthName}</div><div className="text-xl font-semibold tracking-tight tabular-nums text-neg"><Num v={c.spent} /></div></div>
-          <div className="text-right text-[11px] text-mu shrink-0"><div><b className="text-fg font-semibold">{c.left === 0 ? 'Last day' : c.left + ' day' + (c.left === 1 ? '' : 's') + ' left'}</b></div><div className="mt-0.5 tabular-nums">forecast {php(c.fc)}</div></div>
-        </div>
-        <div className="mt-2"><Bar pct={c.monthPct} /></div>
-        {!empty && (
-          <>
-            <div className="ov mt-3">
-              <div className="ov-c"><div className="ov-l">Liquid cash</div><div className="ov-v">{php(c.liquid)}</div></div>
-              <div className="ov-c"><div className="ov-l">Allocated</div><div className="ov-v text-ac">{php(c.allocated)}</div></div>
-              <div className="ov-c"><div className="ov-l">Projected month-end</div><div className={'ov-v ' + (c.projected < 0 ? 'text-neg' : '')}>{php(c.projected)}</div></div>
-              <div className="ov-c"><div className="ov-l">Pending net</div><div className={'ov-v ' + (c.pend < 0 ? 'text-neg' : c.pend > 0 ? 'text-pos' : '')}>{sgn(c.pend)}</div></div>
-            </div>
-            <div className="flex items-center justify-between gap-3 mt-2.5 text-[11px] text-mu">
-              <span className="min-w-0 truncate">{php(c.allocD)} for payables · {php(c.saved)} in goals{c.spendable < 0 ? ' · over cash' : ''}</span>
-              <button className="link-b shrink-0" onClick={() => goto('plan')}>Manage</button>
-            </div>
-          </>
-        )}
-      </Glass>
+      {/* Small summary cards: everything that is not pinned. Two across on phones, four across on wide screens. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2">
+        {small.map((k, i) => {
+          const v = homeValue(k, c), d = HOME_DEFS[k]
+          return (
+            <Glass key={k} i={i + 1} className="p-3 sm:p-3.5">
+              <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0"><div className="text-[11px] text-mu truncate">{k === 'spent' ? 'Spent in ' + c.monthName : d.name}</div><div className={'mt-1 text-base sm:text-lg font-semibold tracking-tight tabular-nums truncate ' + homeTone(k, v)}>{homeText(k, v)}</div></div>
+                <div className="-mr-1.5 -mt-1.5 shrink-0"><OptionsMenu label={'Options for ' + d.name} items={[{ label: 'Pin to top', icon: 'pin', onClick: () => set({ homePin: k }) }, ...goItem(k)]} /></div>
+              </div>
+              <div className="text-[11px] text-mu mt-0.5 truncate">{d.hint}</div>
+            </Glass>
+          )
+        })}
+      </div>
 
       {/* Small cards, side by side from 640px */}
       {(showCats || showGoals) && (
@@ -292,11 +350,13 @@ function Home({ goto, openSheet }) {
                 <span className={'grid place-items-center w-8 h-8 rounded-full shrink-0 ' + (x.type === 'income' ? 'bg-pos/15 text-pos' : x.type === 'expense' ? 'bg-neg/15 text-neg' : 'bg-fg/10 text-mu')}><Ic n={x.type === 'income' ? 'up' : x.type === 'expense' ? 'down' : 'swap'} s={14} /></span>
                 <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate leading-[18px]">{x.title}</div><div className="text-[11px] text-mu truncate leading-[15px]">{x.sub} · {fd(x.date)}</div></div>
                 <div className={'text-[13px] font-semibold whitespace-nowrap tabular-nums text-right ' + (x.type === 'income' ? 'text-pos' : x.type === 'expense' ? 'text-neg' : '')}>{x.type === 'income' ? '+' : x.type === 'expense' ? '−' : ''}{php(x.amount)}</div>
+                {x.undo && <UndoBtn onClick={() => undoPay(x.undo[0], x.undo[1])} label={'Undo ' + x.title} />}
               </div>
             ))}
           </div>
         </Glass>
       )}
+      {pinOpen && ReactDOM.createPortal(<PinSheet onClose={() => setPinOpen(false)} />, document.body)}
     </div>
   )
 }
@@ -311,7 +371,7 @@ function Wallets({ openSheet }) {
   const typeCol = palette(ui.accent, 3)
   const shown = S.wallets.filter((w) => filter === 'all' || w.type === filter)
   const pos = S.wallets.filter((w) => c.bal[w.id] > 0), pal = palette(ui.accent, pos.length)
-  const colorOf = Object.fromEntries(pos.map((w, i) => [w.id, pal[i % pal.length]]))
+  const colorOf = Object.fromEntries(pos.map((w, i) => [w.id, cleanColor(w.color) || pal[i % pal.length]]))
 
   return (
     <div className="space-y-4">
@@ -335,14 +395,14 @@ function Wallets({ openSheet }) {
         </div>
       </Glass>
 
-      <Fold i={1} title="Where your cash sits" right={<span>{pos.length} with funds</span>}>
+      {S.showCashPie && <Fold i={1} open title="Where your cash sits" right={<span>{pos.length} with funds</span>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
           <Donut size={190} data={pos.map((w) => ({ name: w.name, value: c.bal[w.id], color: colorOf[w.id] }))} center={php(c.liquid)} sub="liquid cash" />
           <div className="space-y-2.5">
             {pos.length ? pos.slice().sort((a, b) => c.bal[b.id] - c.bal[a.id]).map((w) => <div key={w.id} className="flex items-center gap-2 text-sm"><i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colorOf[w.id] }} /><span className="truncate flex-1">{w.name}</span><span className="text-mu text-xs tabular-nums">{pct1(share(c.bal[w.id]))}</span></div>) : <p className="text-sm text-mu">Add money to a wallet to see how your cash is spread.</p>}
           </div>
         </div>
-      </Fold>
+      </Fold>}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -358,19 +418,23 @@ function Wallets({ openSheet }) {
       {/* Wallet cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
         {shown.map((w, i) => {
-          const bal = c.bal[w.id], neg = bal < 0
+          const bal = c.bal[w.id], neg = bal < 0, hex = cleanColor(w.color)
           return (
-            <Glass key={w.id} i={i + 2} className="p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <span className="grid place-items-center w-10 h-10 rounded-2xl bg-ac/15 text-ac shrink-0"><Ic n={(WTYPES[w.type] || WTYPES.Cash).icon} s={19} /></span>
-                <div className="min-w-0 flex-1"><div className="font-semibold truncate">{w.name}</div><div className="text-xs text-mu">{w.type}</div></div>
-                <div className="text-right shrink-0"><div className={'text-lg font-semibold tabular-nums ' + (neg ? 'text-neg' : '')}><Num v={bal} /></div><div className="text-[11px] text-mu">{pct1(share(bal))} of cash</div></div>
-              </div>
-              <div className="mt-3"><Bar pct={share(bal)} /></div>
-              <div className="flex gap-2 mt-4">
-                <button className="btn flex-1 !py-2" onClick={() => openSheet({ k: 'balance', item: w })}>Edit balance</button>
-                <button className="btn btn-i shrink-0" aria-label={'Rename or change type of ' + w.name} title="Edit wallet" onClick={() => openSheet({ k: 'wallet', item: w })}><Ic n="pen" s={15} /></button>
-                <button className="btn btn-d btn-i shrink-0" aria-label={'Delete ' + w.name} title="Delete wallet" onClick={() => openSheet({ k: 'delete', item: w })}><Ic n="trash" s={15} /></button>
+            <Glass key={w.id} i={i + 2} className="p-4 sm:p-5" style={hex ? { borderColor: hex + '66' } : undefined}>
+              {hex && <i aria-hidden="true" className="absolute inset-0 pointer-events-none rounded-[inherit]" style={{ background: 'linear-gradient(135deg, ' + hex + '2e, ' + hex + '0d 55%, transparent 85%)' }} />}
+              <div className="relative">
+                <div className="flex items-center gap-3">
+                  <span className={'grid place-items-center w-10 h-10 rounded-2xl shrink-0 ' + (hex ? '' : 'bg-ac/15 text-ac')} style={hex ? { background: hex + '29', color: hex } : undefined}><Ic n={(WTYPES[w.type] || WTYPES.Cash).icon} s={19} /></span>
+                  <div className="min-w-0 flex-1"><div className="font-semibold truncate flex items-center gap-1.5">{hex && <i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: hex }} />}<span className="truncate">{w.name}</span></div><div className="text-xs text-mu">{w.type}</div></div>
+                  <div className="text-right shrink-0"><div className={'text-lg font-semibold tabular-nums ' + (neg ? 'text-neg' : '')}><Num v={bal} /></div><div className="text-[11px] text-mu">{pct1(share(bal))} of cash</div></div>
+                  <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + w.name} items={[
+                    { label: 'Edit Balance', icon: 'cash', onClick: () => openSheet({ k: 'balance', item: w }) },
+                    { label: 'Edit Name', icon: 'pen', onClick: () => openSheet({ k: 'wallet', item: w }) },
+                    { label: 'Color Code', icon: 'palette', onClick: () => openSheet({ k: 'color', item: w }) },
+                    { label: 'Delete', icon: 'trash', danger: true, onClick: () => openSheet({ k: 'delete', item: w }) }
+                  ]} /></div>
+                </div>
+                <div className="mt-3"><Bar pct={share(bal)} /></div>
               </div>
             </Glass>
           )
@@ -421,7 +485,7 @@ function ThemeChip({ t, dark, on, onPick }) {
 }
 
 function Settings({ openSheet }) {
-  const { S, ui, user, guest, auth, set, loadSample, clearData } = useApp()
+  const { S, ui, user, guest, auth, set, loadSample, clearData, addSrc, delSrc } = useApp()
   const upd = useUpdate(), [ver, setVer] = useState(''), [chk, setChk] = useState('')
   useEffect(() => { swVersion().then(setVer) }, [upd])
   const check = async () => { setChk('checking'); setChk(await checkUpdate()) }
@@ -459,6 +523,42 @@ function Settings({ openSheet }) {
             <button className="btn btn-p mt-3 w-full" onClick={auth.leaveGuest}>Sign in or create account</button>
           </div>
         )}
+      </Glass>
+
+      {/* Display */}
+      <Glass i={2} className="p-3 sm:p-4">
+        <h3 className="font-semibold px-2 pt-1 pb-2">Display</h3>
+        <div className="px-2 pb-2 flex items-center gap-3">
+          <div className="min-w-0 flex-1"><div className="text-sm font-medium">Cash pie chart</div><div className="text-xs text-mu">Show “Where your cash sits” on the Wallets tab. Off by default, since Total liquid cash already shows the sum.</div></div>
+          <button type="button" role="switch" aria-checked={S.showCashPie === true} aria-label="Show the cash pie chart" onClick={() => set({ showCashPie: !S.showCashPie })} className={'relative shrink-0 w-12 h-7 rounded-full transition-colors ' + (S.showCashPie ? 'bg-ac' : 'bg-fg/25')}>
+            <i className={'absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ' + (S.showCashPie ? 'translate-x-5' : '')} />
+          </button>
+        </div>
+      </Glass>
+
+      {/* Pending sources: Payables / Receivables and any other source, with add, rename and delete */}
+      <Glass i={2} className="p-3 sm:p-4">
+        <h3 className="font-semibold px-2 pt-1 pb-1">Pending sources</h3>
+        <p className="text-xs text-mu px-2 pb-2">Sources group your payables and receivables on the Pending tab.</p>
+        <div className="space-y-1">
+          {(S.srcs || []).map((x) => {
+            const n = S.debts.filter((d) => d.kind === x.kind && d.cat === x.name).length, pay = x.kind === 'payable'
+            return (
+              <div key={x.kind + '|' + x.name} className="flex items-center gap-2 rounded-2xl px-2 py-1">
+                <div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{x.name}</div><div className="text-xs text-mu">{pay ? 'Payable' : 'Receivable'} · {n} item{n === 1 ? '' : 's'}</div></div>
+                <OptionsMenu label={'Options for ' + x.name} items={[
+                  { label: 'Edit Name', icon: 'pen', onClick: () => openSheet({ k: 'source', item: { kind: x.kind, name: x.name } }) },
+                  { label: 'Delete', icon: 'trash', danger: true, onClick: () => delSrc(x.kind, x.name), confirm: { warn: 'Delete “' + x.name + '”? ' + (n ? 'Its ' + n + ' item' + (n === 1 ? '' : 's') + ' and payment history are deleted too. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }
+                ]} />
+              </div>
+            )
+          })}
+          {!(S.srcs || []).length && <p className="text-sm text-mu px-2 py-1">No sources yet.</p>}
+        </div>
+        <div className="flex flex-wrap gap-2 px-2 pt-2 pb-1">
+          {PS_DEFAULTS.filter((x) => !hasSrc(S.srcs || [], x.kind, x.name)).map((x) => <button key={x.kind} className="btn !py-1.5 !text-xs" onClick={() => addSrc(x.kind, x.name)}><Ic n="plus" s={14} />Restore “{x.name}”</button>)}
+          <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'source', item: null })}><Ic n="plus" s={14} />Add source</button>
+        </div>
       </Glass>
 
       {/* App & storage */}
