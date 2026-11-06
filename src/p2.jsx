@@ -15,6 +15,7 @@ const CATS = { expense: ['Food', 'Rent', 'Transport', 'Bills', 'Fun', 'Shopping'
 const BASE = { payable: [], receivable: [] }
 const catsFor = (S, k) => [...BASE[k], ...(S.srcs || []).filter((x) => x.kind === k && !BASE[k].includes(x.name)).map((x) => x.name)]
 const daysTo = (d) => Math.round((new Date(d + 'T00:00') - new Date(off(0) + 'T00:00')) / 864e5)
+const dueRel = (d) => { const n = daysTo(d); return n < 0 ? Math.abs(n) + 'd overdue' : n === 0 ? 'today' : n === 1 ? 'tomorrow' : 'in ' + n + 'd' }
 const dueTxt = (d) => { const n = daysTo(d); return n < 0 ? Math.abs(n) + 'd overdue' : n === 0 ? 'Due today' : 'Due in ' + n + 'd' }
 const WOpts = ({ ws, c }) => ws.map((w) => <option key={w.id} value={w.id}>{w.name} · {php(c.bal[w.id])}</option>)
 
@@ -77,7 +78,7 @@ function DebtSheet({ kind, item, preset, fill, lock, onClose }) {
     if (!f.party.trim()) return setM('Enter a name or description.')
     const wait = !!item && needsAmt(item) && f.rec && f.vary && !String(f.total).trim() // a generated variable item may stay at ₱0 until its amount is known
     if (!wait && (!money(f.total) || +f.total <= 0)) return setM('Enter an amount greater than zero with at most two decimals.')
-    if (item && +f.total < (item.paid || 0)) return setM('The total can’t be lower than the ' + php(item.paid) + ' already settled.')
+    if (pay && item && +f.total < (item.paid || 0)) return setM('The total can’t be lower than the ' + php(item.paid) + ' already settled.')
     if (!cat) return setM('Name the new source.')
     if (!f.due) return setM('Pick a due date.')
     if (isNew && !hit) set({ srcs: [...(S.srcs || []), { kind, name: nc }] })
@@ -155,10 +156,11 @@ function SourceSheet({ item, onClose }) {
 function PaySheet({ item, onClose }) {
   const { S, c, payDebt } = useApp(), pay = item.kind === 'payable', left = rem(item)
   const [v, setV] = useState(''), [m, setM] = useState('')
+  const extra = !pay && money(v) && q(+v) > left ? q(+v - left) : 0
   const [w, setW] = useState(S.wallets.some((x) => x.id === item.wallet) ? item.wallet : S.wallets[0].id)
   const save = () => {
     if (!money(v) || +v <= 0) return setM('Enter an amount greater than zero with at most two decimals.')
-    if (q(+v) > left) return setM('That’s more than the remaining ' + php(left) + '.')
+    if (pay && q(+v) > left) return setM('That’s more than the remaining ' + php(left) + '.') // a receivable may be received for MORE than expected (extra allowance, a tip, a rounded-up payback)
     if (pay && +v > c.bal[w]) return setM('This wallet only has ' + php(c.bal[w]) + '. Pick another or pay less.')
     payDebt(item.id, q(+v), w); onClose()
   }
@@ -166,7 +168,8 @@ function PaySheet({ item, onClose }) {
     <Sheet title={pay ? 'Record payment' : 'Record receipt'} onClose={onClose}>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save() }}>
         <div className="glass-tile p-3 flex items-center justify-between gap-3"><div className="min-w-0"><div className="font-semibold truncate">{item.party}</div><div className="text-xs text-mu">{item.cat}</div></div><div className="text-right"><div className="text-[11px] text-mu">Remaining</div><div className="font-semibold tabular-nums">{php(left)}</div></div></div>
-        <Field label="Amount (PHP)" hint="Partial amounts are fine."><input className="field" autoFocus inputMode="decimal" placeholder="0.00" value={v} onChange={(e) => setV(e.target.value)} /></Field>
+        <Field label="Amount (PHP)" hint={pay ? 'Partial amounts are fine.' : 'Partial amounts are fine, and you can enter more than expected.'}><input className="field" autoFocus inputMode="decimal" placeholder="0.00" value={v} onChange={(e) => setV(e.target.value)} /></Field>
+        {extra > 0 && <p className="text-xs text-pos flex items-start gap-1.5 fade"><Ic n="up" s={12} /><span>{php(extra)} more than expected. The full {php(q(+v))} goes into the wallet and this receivable is marked settled.</span></p>}
         <button type="button" className="btn !py-1.5 !text-xs" onClick={() => setV(String(pay ? Math.min(left, Math.max(0, c.bal[w])) : left))}>{pay ? 'Pay the most this wallet allows' : 'Full remaining amount'}</button>
         <Field label={pay ? 'Pay from' : 'Receive into'}><select className="field" value={w} onChange={(e) => setW(e.target.value)}><WOpts ws={S.wallets} c={c} /></select></Field>
         {isRecur(item) && <p className="text-xs text-mu flex items-center gap-1.5"><Ic n="repeat" s={12} />{FREQ_LABEL[item.frequency]} · once this is fully {pay ? 'paid' : 'received'}, the next one is created for {fd(nextDue(item.due, item.frequency, item.recurDay))}{item.isVariableAmount ? ' at ' + php(0) + ' (you set the amount)' : ''}.</p>}
@@ -199,7 +202,7 @@ function AllocSheet({ item, onClose }) {
     <Sheet title={had ? 'Edit allocation' : 'Allocate funds'} onClose={onClose}>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save() }}>
         <div className="glass-tile p-3 space-y-2">
-          <div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="font-semibold truncate">{d.party}</div><div className="text-xs text-mu">{d.cat} · {dueTxt(d.due)}</div></div><div className="text-right shrink-0"><div className="text-[11px] text-mu">Remaining</div><div className="font-semibold tabular-nums">{php(left)}</div></div></div>
+          <div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="font-semibold truncate">{d.party}</div><div className="text-xs text-mu break-words leading-snug">{d.cat} · Due {fd(d.due)} · {dueRel(d.due)}</div></div><div className="text-right shrink-0"><div className="text-[11px] text-mu">Remaining</div><div className="font-semibold tabular-nums">{php(left)}</div></div></div>
           <Bar pct={left ? (Math.min(total, left) / left) * 100 : 0} />
           <div className={'text-xs tabular-nums ' + (total > left ? 'text-neg' : 'text-mu')}>{php(total)} / {php(left)} allocated</div>
         </div>
@@ -344,12 +347,16 @@ function QuickAddSheet({ onClose, openSheet }) {
 const UndoBtn = ({ onClick, label }) => <button type="button" className="btn !py-1 !px-2 !text-[11px] shrink-0" aria-label={label} title="Reverse this entry and restore the balance" onClick={onClick}><Ic n="undo" s={12} />Undo</button>
 function DebtRow({ d, openSheet }) {
   const { S, delDebt, undoPay, setAllocations } = useApp(), [h, setH] = useState(false)
-  const pay = d.kind === 'payable', r = rem(d), lk = lockOf(d), ask = needsAmt(d), done = r <= 0 && !ask, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
+  const pay = d.kind === 'payable', r = rem(d), over = !pay && r < 0 ? q(-r) : 0, lk = lockOf(d), ask = needsAmt(d), done = r <= 0 && !ask, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
   return (
     <div className="glass-tile p-3.5 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0"><span className="font-medium break-words leading-snug min-w-0">{d.party}</span>{isRecur(d) && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} />{FREQ_LABEL[d.frequency]}</span>}</div><div className={'text-xs mt-0.5 leading-snug ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? 'Settled' : dueTxt(d.due)} · {fd(d.due)}</div></div>
-        <div className="text-right shrink-0 whitespace-nowrap">{ask ? <span className="inline-flex items-center gap-1 rounded-full bg-neg/15 text-neg text-[11px] font-semibold px-2 py-0.5"><Ic n="alert" s={12} />Set Amount</span> : <><div className={'font-semibold tabular-nums leading-snug ' + (!pay && !done ? 'text-pos' : '')}>{php(Math.max(0, r))}</div><div className="text-[11px] text-mu leading-snug">of {php(d.total)}</div></>}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-mu leading-none mb-1">{pay ? 'Pay to' : 'Who owes you'}</div>
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0"><span className="font-medium break-words leading-snug min-w-0">{d.party}</span>{isRecur(d) && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} />{FREQ_LABEL[d.frequency]}</span>}</div>
+          <div className={'flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs mt-1 leading-snug ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? <span>{pay ? 'Settled' : over > 0 ? 'Received' : 'Settled'} · due {fd(d.due)}</span> : <><span className="inline-flex items-center gap-1 whitespace-nowrap"><Ic n="clock" s={11} />Due {fd(d.due)}</span><span className="whitespace-nowrap">· {dueRel(d.due)}</span></>}</div>
+        </div>
+        <div className="text-right shrink-0 max-w-[48%]">{ask ? <span className="inline-flex items-center gap-1 rounded-full bg-neg/15 text-neg text-[11px] font-semibold px-2 py-0.5 whitespace-nowrap"><Ic n="alert" s={12} />Set Amount</span> : over > 0 ? <><div className="font-semibold tabular-nums leading-snug text-pos whitespace-nowrap">{php(d.paid)}</div><div className="text-[11px] text-pos leading-snug">+{php(over)} extra</div></> : <><div className={'font-semibold tabular-nums leading-snug whitespace-nowrap ' + (!pay && !done ? 'text-pos' : '')}>{php(Math.max(0, r))}</div><div className="text-[11px] text-mu leading-snug whitespace-nowrap">of {php(d.total)}</div></>}</div>
       </div>
       {!ask && <Bar pct={d.total > 0 ? ((d.paid || 0) / d.total) * 100 : 0} />}
       {pay && !done && lk > 0 && (
@@ -487,12 +494,12 @@ function Pending({ openSheet }) {
       {!groups.length && <Empty t="No sources yet. Tap “Add Source” (for example a credit card or a person), then add payables or receivables inside it." />}
       <div className="space-y-3">
         {groups.map((g) => {
-          const on = isOpen(g.key), pay = g.kind === 'payable', t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
+          const on = isOpen(g.key), pay = g.kind === 'payable', generic = /^(payables?|receivables?)$/i.test(g.name.trim()), t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
           return (
             <Glass key={g.key} className="p-4 sm:p-5">
               <div className="flex items-center gap-2">
                 <button className="min-w-0 flex-1 flex items-center justify-between gap-3 text-left" aria-expanded={on} onClick={() => setOpen({ ...open, [g.key]: !on })}>
-                  <span className="min-w-0"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-semibold break-words leading-snug min-w-0">{g.name}</span><span className={'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span></span><span className="block text-xs text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span></span>
+                  <span className="min-w-0"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className={'font-semibold break-words leading-snug min-w-0 ' + (generic ? (pay ? 'text-neg' : 'text-pos') : '')}>{g.name}</span>{!generic && <span className={'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span>}</span><span className="block text-xs text-mu mt-0.5">{g.items.length} item{g.items.length === 1 ? '' : 's'}{pay ? '' : ' · who owes you'}</span></span>
                   <span className="flex items-center gap-2 shrink-0"><span className="font-semibold tabular-nums whitespace-nowrap">{php(t)}</span><Ic n="chev" s={18} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} /></span>
                 </button>
                 <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + g.name} items={[
@@ -532,7 +539,7 @@ function Pending({ openSheet }) {
 }
 
 /* ---------- Allocate (Smart Plan) ---------- */
-function Allocate() {
+function Allocate({ openSheet }) {
   const { S, c, setAlloc } = useApp()
   const pays = S.debts.filter((d) => d.kind === 'payable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
   const recs = S.debts.filter((d) => d.kind === 'receivable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
@@ -557,7 +564,7 @@ function Allocate() {
       {urgent.length > 0 && (
         <Glass className="p-4 sm:p-5" style={{ borderColor: 'rgb(var(--neg) / .4)' }} role="alert">
           <div className="flex items-center gap-2 font-semibold text-neg"><Ic n="alert" s={18} />Priority payables are short</div>
-          <div className="mt-3 space-y-2">{urgent.map((d) => <div key={d.id} className="flex justify-between gap-3 text-sm"><span className="min-w-0 truncate">{d.party}<span className="text-xs text-mu"> · {dueTxt(d.due)}</span></span><span className="text-neg tabular-nums whitespace-nowrap">Short {php(short(d))}</span></div>)}</div>
+          <div className="mt-3 space-y-2">{urgent.map((d) => <div key={d.id} className="flex items-start justify-between gap-3 text-sm"><span className="min-w-0 flex-1"><span className="block break-words leading-snug">{d.party}</span><span className="block text-xs text-mu leading-snug">Due {fd(d.due)} · {dueRel(d.due)}</span></span><span className="text-neg tabular-nums whitespace-nowrap">Short {php(short(d))}</span></div>)}</div>
           <p className="text-xs text-mu mt-3">{cash >= totalShort ? 'You have enough spendable cash to cover these. Tap Smart Plan.' : 'Spendable cash covers ' + php(cash) + ' of the ' + php(totalShort) + ' still unfunded.'}</p>
         </Glass>
       )}
@@ -567,12 +574,23 @@ function Allocate() {
         <p className="text-xs text-mu mt-1">Drag to set aside cash for each payable, earliest due first. Locked money leaves your spendable balance.</p>
         <div className="mt-4 space-y-5">
           {pays.length ? pays.map((d) => {
-            const a = cur(d), mx = q(Math.min(room(d), a + cash)), s = short(d)
+            const a = cur(d), mx = q(Math.min(room(d), a + cash)), s = short(d), lk = lockOf(d), late = d.due < off(0)
             return (
-              <div key={d.id}>
-                <div className="flex justify-between gap-3 text-sm"><span className="min-w-0 truncate">{d.party}<span className="text-xs text-mu"> · {d.cat} · {dueTxt(d.due)}</span></span><span className="tabular-nums whitespace-nowrap">{php(a)}</span></div>
+              <div key={d.id} className="space-y-1.5">
+                <div className="flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 flex-1"><span className="block font-medium break-words leading-snug">{d.party}</span><span className={'block text-xs leading-snug ' + (late ? 'text-neg' : 'text-mu')}>{d.cat} · Due {fd(d.due)} · {dueRel(d.due)}</span></span>
+                  <span className="tabular-nums whitespace-nowrap">{php(a)}</span>
+                </div>
                 <input type="range" min="0" max={mx} step="0.01" value={Math.min(a, mx)} aria-label={'Amount to allocate to ' + d.party} onChange={(e) => setAlloc({ ['d:' + d.id]: q(Math.min(+e.target.value, mx)) })} />
-                <div className="flex items-center justify-between gap-2 text-xs"><span className={s > 0 ? 'text-neg' : 'text-pos'}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}{lockOf(d) > 0 ? ' · ' + php(lockOf(d)) + ' locked in wallets' : ''}</span><button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></div>
+                <div className="flex items-center justify-between gap-2 text-xs"><span className={'min-w-0 break-words leading-snug ' + (s > 0 ? 'text-neg' : 'text-pos')}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}</span><button className="btn !py-1 !px-2.5 !text-[11px] shrink-0" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></div>
+                {lk > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 text-xs"><span className="inline-flex items-center gap-1 font-medium text-ac"><Ic n="lock" s={12} />{php(lk)} / {php(rem(d))} locked in wallets</span></div>
+                    <Bar gray pct={(lk / rem(d)) * 100} />
+                    <div className="text-[11px] text-mu break-words leading-snug">{(d.allocations || []).filter((x) => c.bal[x.walletId] !== undefined).map((x) => (S.wallets.find((w) => w.id === x.walletId) || {}).name + ' ' + php(x.amount)).join(' · ')}</div>
+                  </div>
+                )}
+                {openSheet && <button className="btn w-full !py-1.5 !text-xs" onClick={() => openSheet({ k: 'alloc', item: d })}><Ic n="lock" s={13} />{lk > 0 ? 'Edit wallet allocation' : 'Allocate funds from wallets'}</button>}
               </div>
             )
           }) : <Empty t="No open payables to plan for." />}
@@ -585,6 +603,12 @@ function Allocate() {
           <div className="flex justify-between gap-3 border-t border-fg/10 pt-2 font-semibold"><span>Spendable</span><span className={'tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}>{php(c.spendable)}</span></div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">{S.wallets.map((w) => <Tile key={w.id} l={w.name} v={php(c.bal[w.id])} tone={c.bal[w.id] < 0 ? 'text-neg' : ''} />)}</div>
+        {S.wallets.some((w) => c.lockW[w.id] > 0) && (
+          <div className="mt-4 space-y-1.5 text-xs">
+            <div className="font-semibold text-sm">Locked per wallet</div>
+            {S.wallets.filter((w) => c.lockW[w.id] > 0).map((w) => <div key={w.id} className="flex items-start justify-between gap-3"><span className="min-w-0 break-words text-mu">{w.name}</span><span className="tabular-nums text-right"><span className="text-ac">{php(c.lockW[w.id])} locked</span><span className="text-mu"> · {php(Math.max(0, q(c.bal[w.id] - c.lockW[w.id])))} free</span></span></div>)}
+          </div>
+        )}
       </Fold>
 
       <Fold title="If your receivables arrive" right={<span className="tabular-nums">{recs.length ? '+' + php(recAll) : 'none'}</span>}>
@@ -594,7 +618,7 @@ function Allocate() {
               const p = preview(r.amt)
               return (
                 <div key={r.id} className="glass-tile p-3.5">
-                  <div className="flex justify-between gap-3"><div className="min-w-0"><div className="font-medium truncate">{r.party}</div>{r.due && <div className="text-xs text-mu">{dueTxt(r.due)}</div>}</div><div className="text-pos font-semibold tabular-nums whitespace-nowrap">+{php(r.amt)}</div></div>
+                  <div className="flex justify-between gap-3"><div className="min-w-0 flex-1"><div className="font-medium break-words leading-snug">{r.party}</div>{r.due && <div className="text-xs text-mu leading-snug">Due {fd(r.due)} · {dueRel(r.due)}</div>}</div><div className="text-pos font-semibold tabular-nums whitespace-nowrap">+{php(r.amt)}</div></div>
                   <div className="mt-3 space-y-1 text-xs">
                     <div className="flex justify-between"><span className="text-mu">Spendable becomes</span><span className="tabular-nums">{php(p.nc)}</span></div>
                     <div className="flex justify-between"><span className="text-mu">Unfunded payables covered</span><span className="tabular-nums">{php(p.cov)}</span></div>

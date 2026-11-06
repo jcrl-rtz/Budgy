@@ -1,3 +1,16 @@
+# Budgy v8 P1b: Phase 4 allocations + UI/UX hotfixes
+
+- **Mobile layout**: due dates are never cut off. The Allocate tab rows (target allocation, priority-short list, "if your receivables arrive") put the name and the due date on their own wrapping lines instead of one `truncate` line. Cards wrap long text (`overflow-wrap`) and keep amounts on one line.
+- **Receivables vs Payables**: every card now has a small caption (`Who owes you` on receivables, `Pay to` on payables) and an explicit `Due Nov 14 · in 8d` line.
+- **Over-receiving**: Receive accepts more than the expected amount (payables are still capped at what is left). The whole amount lands in the wallet, the receivable is marked settled and the card shows `+₱X extra`. A receivable can be edited below what was already received.
+- **Header cleanup**: a source named "Payables" / "Receivables" no longer shows a second "Payable" / "Receivable" badge; the title itself is tinted red / green. Custom sources (Installments, Family…) keep their badge.
+- **Post-login veil**: full-screen "Getting your budget ready" overlay after signing in (also when a signed-in user reopens the app). It waits for the cloud sync (min 0.9 s, max 7 s) and fades out, hiding theme and layout shifts. Onboarding waits for it.
+- **Wallet allocations (Phase 4)**: `d.allocations = [{ walletId, amount }]` on payables is deducted from Spendable (`calc().locked`) but never from wallet balances; it shrinks automatically as payments are recorded. Pending: `...` menu has Allocate Funds / Edit Allocation / Remove Allocation, and the sheet has per-wallet amounts, Max, Clear and Remove. The payable card shows `₱500 / ₱1,000 Allocated` with a bar. The Allocate tab now shows the same lock bar per payable, an Allocate funds / Edit wallet allocation button, and a "Locked per wallet" list.
+- Build: run esbuild with the flags in `build.sh` (it is `npx esbuild`, so it needs network or a local esbuild).
+- `sw.js` VERSION is `budgy-v8-p1b`; script query strings are `?v=v8p1b`.
+
+---
+
 # Budgy v7 GitHub-stable (gh-1): "ReferenceError: Auth is not defined"
 
 - `app.js`: every component App uses is looked up with `typeof X !== 'undefined'` (`parts()`), rendered through `Slot`, and every tab and sheet sits in its own error boundary (`Guard`). A missing or crashing component now shows a small "Reload" card instead of crashing the page; the nav stays usable.

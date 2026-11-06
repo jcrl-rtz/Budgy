@@ -197,6 +197,11 @@ function parts() {
     Onboarding: typeof Onboarding !== "undefined" ? Onboarding : null
   };
 }
+const VEIL_MIN = 900;
+function Veil({ fade, name }) {
+  const P = parts();
+  return /* @__PURE__ */ React.createElement("div", { className: "veil" + (fade ? " out" : ""), role: "status", "aria-live": "polite", "aria-label": "Loading your budget" }, /* @__PURE__ */ React.createElement("div", { className: "veil-in" }, /* @__PURE__ */ React.createElement("div", { className: "veil-logo" }, /* @__PURE__ */ React.createElement(Slot, { c: P.BrandMark, name: "BrandMark", soft: true, size: 64 })), /* @__PURE__ */ React.createElement("div", { className: "veil-title" }, name ? "Welcome back, " + name : "Getting your budget ready"), /* @__PURE__ */ React.createElement("div", { className: "veil-sub" }, "Syncing your wallets and plans…"), /* @__PURE__ */ React.createElement("div", { className: "veil-bar", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("i", null))));
+}
 function App() {
   const { S, c, ready: providerReady, user, guest, sync, addTx, delTx } = useApp();
   const P = parts();
@@ -250,15 +255,35 @@ function App() {
       setSheet(sh);
     }
   }, [ready, user, guest, sync]);
+  const [veil, setVeil] = useState({ done: false, fade: false }), veilT0 = useRef(0), uid = user ? user.uid || "u" : "";
+  const veilReady = !!user && (sync === "synced" || sync === "error");
+  useEffect(() => {
+    if (!user) {
+      veilT0.current = 0;
+      setVeil({ done: false, fade: false });
+      return;
+    }
+    veilT0.current = Date.now();
+  }, [uid]);
+  useEffect(() => {
+    if (!user || veil.done) return;
+    const wait = veilReady ? Math.max(0, VEIL_MIN - (Date.now() - (veilT0.current || Date.now()))) : 7e3;
+    const a = setTimeout(() => setVeil((v) => ({ ...v, fade: true })), wait), b = setTimeout(() => setVeil({ done: true, fade: true }), wait + 420);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
+  }, [veilReady, uid, veil.done]);
+  const veiled = !!user && !veil.done;
   if (!ready) return /* @__PURE__ */ React.createElement("div", { id: "boot" }, /* @__PURE__ */ React.createElement("span", null));
   if (!user && !guest) return /* @__PURE__ */ React.createElement(Slot, { c: P.Auth, name: "Auth" });
   const hr = (/* @__PURE__ */ new Date()).getHours(), greet = hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
   const title = view === "home" ? greet + ", " + (S.name.trim() || "there") : view === "settings" ? "Settings" : (NAV.find((n) => n[0] === view) || NAV[0])[1];
-  const page = { home: /* @__PURE__ */ React.createElement(Slot, { c: P.Home, name: "Home", goto, openSheet }), wallets: /* @__PURE__ */ React.createElement(Slot, { c: P.Wallets, name: "Wallets", openSheet }), pending: /* @__PURE__ */ React.createElement(Slot, { c: P.Pending, name: "Pending", openSheet }), plan: /* @__PURE__ */ React.createElement(Slot, { c: P.Allocate, name: "Allocate" }), goals: /* @__PURE__ */ React.createElement(Slot, { c: P.GoalsPage, name: "GoalsPage", openSheet }), settings: /* @__PURE__ */ React.createElement(Slot, { c: P.Settings, name: "Settings", openSheet }) }[view];
+  const page = { home: /* @__PURE__ */ React.createElement(Slot, { c: P.Home, name: "Home", goto, openSheet }), wallets: /* @__PURE__ */ React.createElement(Slot, { c: P.Wallets, name: "Wallets", openSheet }), pending: /* @__PURE__ */ React.createElement(Slot, { c: P.Pending, name: "Pending", openSheet }), plan: /* @__PURE__ */ React.createElement(Slot, { c: P.Allocate, name: "Allocate", openSheet }), goals: /* @__PURE__ */ React.createElement(Slot, { c: P.GoalsPage, name: "GoalsPage", openSheet }), settings: /* @__PURE__ */ React.createElement(Slot, { c: P.Settings, name: "Settings", openSheet }) }[view];
   const fresh = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.length <= 1 && S.wallets.every((w) => !+w.balance);
   const settled = user ? sync === "synced" || sync === "error" : true;
-  const guide = !S.seen && fresh && settled && !sheet || sheet && sheet.k === "guide";
-  return /* @__PURE__ */ React.createElement("div", { className: "min-h-dvh" }, /* @__PURE__ */ React.createElement("aside", { className: "hidden rail:flex rail-surface fixed left-0 top-0 bottom-0 z-30 w-20 xl:w-64 flex-col items-center xl:items-stretch gap-2 px-2 xl:px-4 pb-4 overflow-y-auto", style: { paddingTop: "max(env(safe-area-inset-top), 16px)" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center xl:justify-start gap-2.5 px-1 py-2" }, /* @__PURE__ */ React.createElement(Slot, { c: P.BrandMark, name: "BrandMark", soft: true, size: 40 }), /* @__PURE__ */ React.createElement("span", { className: "hidden xl:inline text-lg font-bold tracking-tight" }, "Budgy")), /* @__PURE__ */ React.createElement("button", { className: "fab w-14 h-14 xl:w-full xl:h-14 xl:gap-2.5 xl:rounded-full mt-2 shrink-0", "aria-label": "Quick add", title: "Quick add", onClick: () => openSheet({ k: "quick" }) }, /* @__PURE__ */ React.createElement("span", { className: "flex items-center gap-2.5" }, /* @__PURE__ */ React.createElement(Slot, { c: P.Ic, name: "Ic", soft: true, n: "plus", s: 24 }), /* @__PURE__ */ React.createElement("span", { className: "hidden xl:inline text-sm font-semibold" }, "Quick Add"))), /* @__PURE__ */ React.createElement("nav", { className: "mt-4 w-full flex flex-col gap-1.5", "aria-label": "Main" }, NAV.map(([k, l, ic]) => {
+  const guide = !S.seen && fresh && settled && !veiled && !sheet || sheet && sheet.k === "guide";
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-dvh" }, veiled && /* @__PURE__ */ React.createElement(Veil, { fade: veil.fade, name: (S.name || "").trim().split(" ")[0] }), /* @__PURE__ */ React.createElement("aside", { className: "hidden rail:flex rail-surface fixed left-0 top-0 bottom-0 z-30 w-20 xl:w-64 flex-col items-center xl:items-stretch gap-2 px-2 xl:px-4 pb-4 overflow-y-auto", style: { paddingTop: "max(env(safe-area-inset-top), 16px)" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center xl:justify-start gap-2.5 px-1 py-2" }, /* @__PURE__ */ React.createElement(Slot, { c: P.BrandMark, name: "BrandMark", soft: true, size: 40 }), /* @__PURE__ */ React.createElement("span", { className: "hidden xl:inline text-lg font-bold tracking-tight" }, "Budgy")), /* @__PURE__ */ React.createElement("button", { className: "fab w-14 h-14 xl:w-full xl:h-14 xl:gap-2.5 xl:rounded-full mt-2 shrink-0", "aria-label": "Quick add", title: "Quick add", onClick: () => openSheet({ k: "quick" }) }, /* @__PURE__ */ React.createElement("span", { className: "flex items-center gap-2.5" }, /* @__PURE__ */ React.createElement(Slot, { c: P.Ic, name: "Ic", soft: true, n: "plus", s: 24 }), /* @__PURE__ */ React.createElement("span", { className: "hidden xl:inline text-sm font-semibold" }, "Quick Add"))), /* @__PURE__ */ React.createElement("nav", { className: "mt-4 w-full flex flex-col gap-1.5", "aria-label": "Main" }, NAV.map(([k, l, ic]) => {
     const on = view === k;
     return /* @__PURE__ */ React.createElement(
       "button",

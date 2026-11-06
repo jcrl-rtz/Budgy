@@ -159,6 +159,24 @@ function parts() {
   }
 }
 
+// v8 P1: full-screen veil shown right after sign-in (and when a signed-in user reopens the app) until the cloud copy has loaded and the theme is applied,
+// so the person never sees the layout jump or the colours switch. It stays for at least VEIL_MIN ms (no flash), fades out, and a 7 s safety timer
+// always removes it, so a slow or failed sync can never trap anyone behind it.
+const VEIL_MIN = 900
+function Veil({ fade, name }) {
+  const P = parts()
+  return (
+    <div className={'veil' + (fade ? ' out' : '')} role="status" aria-live="polite" aria-label="Loading your budget">
+      <div className="veil-in">
+        <div className="veil-logo"><Slot c={P.BrandMark} name="BrandMark" soft size={64} /></div>
+        <div className="veil-title">{name ? 'Welcome back, ' + name : 'Getting your budget ready'}</div>
+        <div className="veil-sub">Syncing your wallets and plans…</div>
+        <div className="veil-bar" aria-hidden="true"><i /></div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const { S, c, ready: providerReady, user, guest, sync, addTx, delTx } = useApp()
   const P = parts() // every component looked up defensively; a missing one renders a fallback instead of throwing
@@ -206,20 +224,36 @@ function App() {
     if (sh) { setView(sh.k === 'debt' ? 'pending' : 'home'); setSheet(sh) }
   }, [ready, user, guest, sync])
 
+  // Post-login veil (see Veil above). `veil.done` flips once the cloud sync has settled and VEIL_MIN has passed.
+  const [veil, setVeil] = useState({ done: false, fade: false }), veilT0 = useRef(0), uid = user ? user.uid || 'u' : ''
+  const veilReady = !!user && (sync === 'synced' || sync === 'error')
+  useEffect(() => {
+    if (!user) { veilT0.current = 0; setVeil({ done: false, fade: false }); return }
+    veilT0.current = Date.now()
+  }, [uid])
+  useEffect(() => {
+    if (!user || veil.done) return
+    const wait = veilReady ? Math.max(0, VEIL_MIN - (Date.now() - (veilT0.current || Date.now()))) : 7000
+    const a = setTimeout(() => setVeil((v) => ({ ...v, fade: true })), wait), b = setTimeout(() => setVeil({ done: true, fade: true }), wait + 420)
+    return () => { clearTimeout(a); clearTimeout(b) }
+  }, [veilReady, uid, veil.done])
+  const veiled = !!user && !veil.done
+
   if (!ready) return <div id="boot"><span /></div>
   if (!user && !guest) return <Slot c={P.Auth} name="Auth" />
 
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'
   const title = view === 'home' ? greet + ', ' + (S.name.trim() || 'there') : view === 'settings' ? 'Settings' : (NAV.find((n) => n[0] === view) || NAV[0])[1]
-  const page = { home: <Slot c={P.Home} name="Home" goto={goto} openSheet={openSheet} />, wallets: <Slot c={P.Wallets} name="Wallets" openSheet={openSheet} />, pending: <Slot c={P.Pending} name="Pending" openSheet={openSheet} />, plan: <Slot c={P.Allocate} name="Allocate" />, goals: <Slot c={P.GoalsPage} name="GoalsPage" openSheet={openSheet} />, settings: <Slot c={P.Settings} name="Settings" openSheet={openSheet} /> }[view]
+  const page = { home: <Slot c={P.Home} name="Home" goto={goto} openSheet={openSheet} />, wallets: <Slot c={P.Wallets} name="Wallets" openSheet={openSheet} />, pending: <Slot c={P.Pending} name="Pending" openSheet={openSheet} />, plan: <Slot c={P.Allocate} name="Allocate" openSheet={openSheet} />, goals: <Slot c={P.GoalsPage} name="GoalsPage" openSheet={openSheet} />, settings: <Slot c={P.Settings} name="Settings" openSheet={openSheet} /> }[view]
 
   // Onboarding: shown once, only to a brand-new budget, and only after the cloud copy has been checked (so returning users never see a flash of it).
   const fresh = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.length <= 1 && S.wallets.every((w) => !+w.balance)
   const settled = user ? sync === 'synced' || sync === 'error' : true
-  const guide = (!S.seen && fresh && settled && !sheet) || (sheet && sheet.k === 'guide')
+  const guide = (!S.seen && fresh && settled && !veiled && !sheet) || (sheet && sheet.k === 'guide')
 
   return (
     <div className="min-h-dvh">
+      {veiled && <Veil fade={veil.fade} name={(S.name || '').trim().split(' ')[0]} />}
       {/* Side rail: tablets, landscape phones and desktops. Icons with labels; widens into a drawer at 1280px. */}
       <aside className="hidden rail:flex rail-surface fixed left-0 top-0 bottom-0 z-30 w-20 xl:w-64 flex-col items-center xl:items-stretch gap-2 px-2 xl:px-4 pb-4 overflow-y-auto" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
         <div className="flex items-center justify-center xl:justify-start gap-2.5 px-1 py-2">
