@@ -7,7 +7,7 @@
 //  3. The new worker installs and then WAITS (it does not take over mid-session). The app shows an "Update Now" prompt.
 //  4. Update Now posts { type: 'SKIP_WAITING' } to the waiting worker. It activates, the page sees `controllerchange`, and reloads.
 // Nobody ever has to remove the app from the home screen to get an update.
-const VERSION = 'budgy-v7-stable-final-2';
+const VERSION = 'budgy-v8-p1';
 // Icon cache-busting: the icons are requested with ?v=ICON_REV (index.html and manifest.json use the same value). Bump ICON_REV together with VERSION
 // whenever the artwork changes. A new VERSION creates a fresh cache, and activate() below deletes every older cache, including the old icons.
 // Note: iOS copies the home-screen icon once, when the app is added. An already-installed icon only changes after it is removed and re-added.

@@ -311,10 +311,10 @@ function Home({ goto, openSheet }) {
           return (
             <Glass key={k} i={i + 1} className="p-3 sm:p-3.5">
               <div className="flex items-start justify-between gap-1">
-                <div className="min-w-0"><div className="text-[11px] text-mu truncate">{k === 'spent' ? 'Spent in ' + c.monthName : d.name}</div><div className={'mt-1 text-base sm:text-lg font-semibold tracking-tight tabular-nums truncate ' + homeTone(k, v)}>{homeText(k, v)}</div></div>
+                <div className="min-w-0"><div className="text-[11px] text-mu leading-snug">{k === 'spent' ? 'Spent in ' + c.monthName : d.name}</div><div className={'mt-1 text-[15px] min-[400px]:text-base sm:text-lg font-semibold tracking-tight tabular-nums leading-tight break-words ' + homeTone(k, v)}>{homeText(k, v)}</div></div>
                 <div className="-mr-1.5 -mt-1.5 shrink-0"><OptionsMenu label={'Options for ' + d.name} items={[{ label: 'Pin to top', icon: 'pin', onClick: () => set({ homePin: k }) }, ...goItem(k)]} /></div>
               </div>
-              <div className="text-[11px] text-mu mt-0.5 truncate">{d.hint}</div>
+              <div className="text-[11px] text-mu mt-0.5 leading-snug">{d.hint}</div>
             </Glass>
           )
         })}
@@ -545,7 +545,7 @@ function Settings({ openSheet }) {
             const n = S.debts.filter((d) => d.kind === x.kind && d.cat === x.name).length, pay = x.kind === 'payable'
             return (
               <div key={x.kind + '|' + x.name} className="flex items-center gap-2 rounded-2xl px-2 py-1">
-                <div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{x.name}</div><div className="text-xs text-mu">{pay ? 'Payable' : 'Receivable'} · {n} item{n === 1 ? '' : 's'}</div></div>
+                <div className="min-w-0 flex-1"><div className="text-sm font-medium break-words leading-snug">{x.name}</div><div className="text-xs text-mu">{pay ? 'Payable' : 'Receivable'} · {n} item{n === 1 ? '' : 's'}</div></div>
                 <OptionsMenu label={'Options for ' + x.name} items={[
                   { label: 'Edit Name', icon: 'pen', onClick: () => openSheet({ k: 'source', item: { kind: x.kind, name: x.name } }) },
                   { label: 'Delete', icon: 'trash', danger: true, onClick: () => delSrc(x.kind, x.name), confirm: { warn: 'Delete “' + x.name + '”? ' + (n ? 'Its ' + n + ' item' + (n === 1 ? '' : 's') + ' and payment history are deleted too. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }

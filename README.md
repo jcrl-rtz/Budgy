@@ -303,3 +303,10 @@ After deploying, iOS only refreshes the home-screen icon when the app is removed
 The page now loads plain `.js` files directly; the in-browser Babel compiler was removed. The editable JSX sources are in `src/*.jsx`.
 After editing a source file, run `./build.sh` (needs Node) and deploy the regenerated root `.js` files. Bump `VERSION` in `sw.js` and the `?v=` strings in `index.html` on every deploy.
 If the app ever fails to start, the fallback card lists the actual script errors under the "Missing" line, and the console logs `Auth loaded`, `App loaded` and `App init status`.
+
+## v8 P1: wallet allocations for payables + Receivables layout fix
+- A payable can lock money in specific wallets (`d.allocations = [{ walletId, amount }]`, `cleanAllocs` / `lockOf` in `src/core.jsx`). Locked money stays in its wallet; it is only taken out of Spendable. The lock shrinks by itself as payments are recorded and can never exceed what is still owed.
+- Pending tab, payable `...` menu: Allocate Funds / Edit Allocation / Remove Allocation. The sheet (`AllocSheet`, `src/p2.jsx`) has a field per wallet with Max and Clear, plus Remove allocation.
+- The card shows "₱X / ₱Y Allocated" with a bar, and the per-wallet split.
+- Receivables / payables cards, source headers, Due Date Summary rows, payment history rows and Home stat tiles now wrap long text instead of cutting it off; amounts never shrink or wrap.
+- Edit `src/*.jsx`, run `./build.sh`, deploy the root `.js` files.

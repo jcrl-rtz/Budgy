@@ -348,15 +348,15 @@ function DebtRow({ d, openSheet }) {
   return (
     <div className="glass-tile p-3.5 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><div className="flex items-center gap-1.5 min-w-0"><span className="font-medium truncate">{d.party}</span>{isRecur(d) && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} />{FREQ_LABEL[d.frequency]}</span>}</div><div className={'text-xs ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? 'Settled' : dueTxt(d.due)} · {fd(d.due)}</div></div>
-        <div className="text-right shrink-0">{ask ? <span className="inline-flex items-center gap-1 rounded-full bg-neg/15 text-neg text-[11px] font-semibold px-2 py-0.5"><Ic n="alert" s={12} />Set Amount</span> : <><div className="font-semibold tabular-nums">{php(Math.max(0, r))}</div><div className="text-[11px] text-mu">of {php(d.total)}</div></>}</div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0"><span className="font-medium break-words leading-snug min-w-0">{d.party}</span>{isRecur(d) && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} />{FREQ_LABEL[d.frequency]}</span>}</div><div className={'text-xs mt-0.5 leading-snug ' + (late ? 'text-neg' : done ? 'text-pos' : 'text-mu')}>{done ? 'Settled' : dueTxt(d.due)} · {fd(d.due)}</div></div>
+        <div className="text-right shrink-0 whitespace-nowrap">{ask ? <span className="inline-flex items-center gap-1 rounded-full bg-neg/15 text-neg text-[11px] font-semibold px-2 py-0.5"><Ic n="alert" s={12} />Set Amount</span> : <><div className={'font-semibold tabular-nums leading-snug ' + (!pay && !done ? 'text-pos' : '')}>{php(Math.max(0, r))}</div><div className="text-[11px] text-mu leading-snug">of {php(d.total)}</div></>}</div>
       </div>
       {!ask && <Bar pct={d.total > 0 ? ((d.paid || 0) / d.total) * 100 : 0} />}
       {pay && !done && lk > 0 && (
         <div className="space-y-1.5" aria-label={php(lk) + ' of ' + php(r) + ' allocated'}>
-          <div className="flex items-center justify-between gap-2 text-xs"><span className={'inline-flex items-center gap-1 font-medium ' + (lk >= r ? 'text-pos' : 'text-ac')}><Ic n="lock" s={12} />{php(lk)} / {php(r)} Allocated</span><span className="text-mu">{lk >= r ? 'Fully locked' : php(q(r - lk)) + ' unlocked'}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs"><span className={'inline-flex items-center gap-1 font-medium ' + (lk >= r ? 'text-pos' : 'text-ac')}><Ic n="lock" s={12} />{php(lk)} / {php(r)} Allocated</span><span className="text-mu">{lk >= r ? 'Fully locked' : php(q(r - lk)) + ' unlocked'}</span></div>
           <Bar gray pct={(lk / r) * 100} />
-          <div className="text-[11px] text-mu truncate">{(d.allocations || []).filter((x) => W[x.walletId]).map((x) => W[x.walletId] + ' ' + php(x.amount)).join(' · ')}</div>
+          <div className="text-[11px] text-mu break-words leading-snug">{(d.allocations || []).filter((x) => W[x.walletId]).map((x) => W[x.walletId] + ' ' + php(x.amount)).join(' · ')}</div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -372,7 +372,7 @@ function DebtRow({ d, openSheet }) {
       </div>
       {h && (
         <div className="space-y-1.5 fade">
-          {(d.payments || []).length ? d.payments.slice().reverse().map((p) => <div key={p.id} className="flex items-center justify-between gap-2 text-xs"><span className="text-mu truncate min-w-0 flex-1">{pay ? 'Paid' : 'Received'} · {fd(p.date)} · {W[p.wallet] || 'Removed'}</span><span className="tabular-nums shrink-0">{pay ? '−' : '+'}{php(p.amount)}</span><UndoBtn onClick={() => undoPay(d.id, p.id)} label={'Undo ' + (pay ? 'payment' : 'receipt') + ' of ' + php(p.amount)} /></div>) : <p className="text-xs text-mu">No payments recorded yet.</p>}
+          {(d.payments || []).length ? d.payments.slice().reverse().map((p) => <div key={p.id} className="flex items-center justify-between gap-2 text-xs"><span className="text-mu break-words min-w-0 flex-1 leading-snug">{pay ? 'Paid' : 'Received'} · {fd(p.date)} · {W[p.wallet] || 'Removed'}</span><span className="tabular-nums shrink-0">{pay ? '−' : '+'}{php(p.amount)}</span><UndoBtn onClick={() => undoPay(d.id, p.id)} label={'Undo ' + (pay ? 'payment' : 'receipt') + ' of ' + php(p.amount)} /></div>) : <p className="text-xs text-mu">No payments recorded yet.</p>}
         </div>
       )}
     </div>
@@ -395,10 +395,10 @@ function DueItem({ d, openSheet }) {
   return (
     <div className="glass-tile p-3 flex items-center gap-2">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 min-w-0"><span className="text-sm font-medium truncate">{d.party}</span>{isRecur(d) && <span className="shrink-0 text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} /></span>}</div>
-        <div className="flex items-center gap-1.5 text-[11px] text-mu min-w-0"><span className={'shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span><span className="truncate">{d.cat}{(d.paid || 0) > 0 ? ' · ' + php(d.paid) + ' of ' + php(d.total) + ' settled' : ''}</span></div>
+        <div className="flex flex-wrap items-center gap-x-1.5 min-w-0"><span className="text-sm font-medium break-words leading-snug min-w-0">{d.party}</span>{isRecur(d) && <span className="shrink-0 text-mu" title={'Repeats ' + d.frequency}><Ic n="repeat" s={11} /></span>}</div>
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-mu min-w-0 mt-0.5"><span className={'shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span><span className="break-words min-w-0">{d.cat}{(d.paid || 0) > 0 ? ' · ' + php(d.paid) + ' of ' + php(d.total) + ' settled' : ''}</span></div>
       </div>
-      <div className={'text-sm font-semibold tabular-nums shrink-0 ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(r)}</div>
+      <div className={'text-sm font-semibold tabular-nums shrink-0 whitespace-nowrap ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(r)}</div>
       <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + d.party} items={[
         { label: pay ? 'Mark as Paid' : 'Mark as Received', icon: 'check', onClick: () => openSheet({ k: 'pay', item: d }) },
         { label: 'Edit', icon: 'pen', onClick: () => openSheet({ k: 'debt', kind: d.kind, item: d }) },
@@ -492,8 +492,8 @@ function Pending({ openSheet }) {
             <Glass key={g.key} className="p-4 sm:p-5">
               <div className="flex items-center gap-2">
                 <button className="min-w-0 flex-1 flex items-center justify-between gap-3 text-left" aria-expanded={on} onClick={() => setOpen({ ...open, [g.key]: !on })}>
-                  <span className="min-w-0"><span className="flex items-center gap-2"><span className="font-semibold truncate">{g.name}</span><span className={'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span></span><span className="block text-xs text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span></span>
-                  <span className="flex items-center gap-2 shrink-0"><span className="font-semibold tabular-nums">{php(t)}</span><Ic n="chev" s={18} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} /></span>
+                  <span className="min-w-0"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-semibold break-words leading-snug min-w-0">{g.name}</span><span className={'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ' + (pay ? 'bg-neg/15 text-neg' : 'bg-pos/15 text-pos')}>{pay ? 'Payable' : 'Receivable'}</span></span><span className="block text-xs text-mu">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span></span>
+                  <span className="flex items-center gap-2 shrink-0"><span className="font-semibold tabular-nums whitespace-nowrap">{php(t)}</span><Ic n="chev" s={18} cls={'text-mu transition-transform ' + (on ? 'rotate-180' : '')} /></span>
                 </button>
                 <div className="-mr-2 shrink-0"><OptionsMenu label={'Options for ' + g.name} items={[
                   { label: 'Edit Name', icon: 'pen', onClick: () => openSheet({ k: 'source', item: { kind: g.kind, name: g.name } }) },
@@ -518,8 +518,8 @@ function Pending({ openSheet }) {
               const pay = d.kind === 'payable'
               return (
                 <div key={p.id} className="flex items-center gap-2 text-xs">
-                  <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate">{pay ? 'Paid' : 'Received'} · {d.party}</div><div className="text-mu truncate">{d.cat} · {W[p.wallet] || 'Removed'} · {fd(p.date)}</div></div>
-                  <span className={'tabular-nums font-semibold shrink-0 ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(p.amount)}</span>
+                  <div className="min-w-0 flex-1"><div className="text-[13px] font-medium break-words leading-snug">{pay ? 'Paid' : 'Received'} · {d.party}</div><div className="text-mu break-words leading-snug">{d.cat} · {W[p.wallet] || 'Removed'} · {fd(p.date)}</div></div>
+                  <span className={'tabular-nums font-semibold shrink-0 whitespace-nowrap ' + (pay ? 'text-neg' : 'text-pos')}>{pay ? '−' : '+'}{php(p.amount)}</span>
                   <UndoBtn onClick={() => undoPay(d.id, p.id)} label={'Undo ' + (pay ? 'payment' : 'receipt') + ' of ' + php(p.amount) + ' for ' + d.party} />
                 </div>
               )
