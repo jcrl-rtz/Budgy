@@ -1,9 +1,9 @@
 # Budgy v7 GitHub-stable (gh-1): "ReferenceError: Auth is not defined"
 
 - `app.js`: every component App uses is looked up with `typeof X !== 'undefined'` (`parts()`), rendered through `Slot`, and every tab and sheet sits in its own error boundary (`Guard`). A missing or crashing component now shows a small "Reload" card instead of crashing the page; the nav stays usable.
-- `index.html`: a loader guard watches for the app to start. If it has not started after 25 s it clears the service-worker caches (never your budget data) and reloads once, then shows a Reload card. All app scripts, `firebase.js` and `manifest.json` carry `?v=v7-spinner-fix-1`; bump that value (and `sw.js` VERSION) on every deploy.
+- `index.html`: a loader guard watches for the app to start. If it has not started after 25 s it clears the service-worker caches (never your budget data) and reloads once, then shows a Reload card. All app scripts, `firebase.js` and `manifest.json` carry `?v=final2`; bump that value (and `sw.js` VERSION) on every deploy.
 - `p3.js`: removed the duplicate `var SW` (core.js is the only declaration). All files were checked for top-level name collisions across files and against `index.html` inline scripts and CDN globals: none left.
-- `sw.js` VERSION is `budgy-v7-spinner-fix-1`.
+- `sw.js` VERSION is `budgy-v7-stable-final-2`.
 
 # Budgy stable final: "Pending is not defined"
 
@@ -298,3 +298,8 @@ Only the signed-in owner can read, write or delete anything under `users/{uid}/.
 | Receipt logo: ring and "b" are built from plain boxes and centred on the ring (no text baseline to drift) | `receipt.js` |
 
 After deploying, iOS only refreshes the home-screen icon when the app is removed and added again.
+
+## final2: precompiled JavaScript (no more in-browser Babel)
+The page now loads plain `.js` files directly; the in-browser Babel compiler was removed. The editable JSX sources are in `src/*.jsx`.
+After editing a source file, run `./build.sh` (needs Node) and deploy the regenerated root `.js` files. Bump `VERSION` in `sw.js` and the `?v=` strings in `index.html` on every deploy.
+If the app ever fails to start, the fallback card lists the actual script errors under the "Missing" line, and the console logs `Auth loaded`, `App loaded` and `App init status`.
