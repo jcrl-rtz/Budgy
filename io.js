@@ -295,37 +295,21 @@ function siBuild(rows, map, o) {
   });
   return out;
 }
-function SmartImport({ file, rows, keys, redirected, onBack, onClose }) {
-  const { S, addTxBatch } = useApp();
-  const det = useMemo(() => siDetect(keys, rows), [rows, keys]);
-  const [map, setMap] = useState(det), [wallet, setWallet] = useState(S.wallets[0].id), [order, setOrder] = useState("auto"), [skipDup, setSkipDup] = useState(true), [m, setM] = useState("");
-  const [sign, setSign] = useState(() => !det.type && !rows.slice(0, 200).some((r) => siNum(r[det.amount]) < 0) ? "expense" : "auto");
-  const samp = useMemo(() => Object.fromEntries(keys.map((k) => {
-    const r = rows.find((x) => x[k] != null && x[k] !== "");
-    return [k, r ? String(r[k]).slice(0, 28) : ""];
-  })), [rows, keys]);
-  const first = rows[0] || {}, ds = map.date ? siOrder(rows.map((r) => r[map.date])) : { any: false };
-  const res = useMemo(() => siBuild(rows, map, { order, sign, wallet, skipDup, existing: S.tx }), [rows, map, order, sign, wallet, skipDup, S.tx]);
-  const W = S.wallets.find((w) => w.id === wallet) || S.wallets[0];
-  const inc = q(res.list.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0)), exp = q(res.list.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0));
-  const FIELDS = [["amount", "Amount", true], ["date", "Date", false], ["note", "Note", false], ["cat", "Category", false], ["type", "Income / expense column", false]];
-  const hints = { amount: "Required.", date: "If none, every row is dated today.", note: "Optional.", cat: "Optional. Unmatched names are kept as their own category.", type: "Optional. Values like income / expense or credit / debit." };
-  const go = () => {
-    if (!map.amount) return setM("Choose which field holds the amount.");
-    if (!res.list.length) return setM("Nothing to import with this mapping. Check the Amount and Date fields.");
-    addTxBatch(res.list);
-    onClose();
-  };
-  return /* @__PURE__ */ React.createElement(Sheet, { title: "Map your data", onClose }, /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold truncate" }, file), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-mu" }, rows.length, " row", rows.length === 1 ? "" : "s", " found", redirected ? " · not a Budgy backup, so it opened in the Smart Importer" : "")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-mu mb-1.5 px-1" }, "First row of your file"), /* @__PURE__ */ React.createElement("div", { className: "glass-tile p-3 max-h-40 overflow-auto space-y-1" }, keys.slice(0, 14).map((k) => /* @__PURE__ */ React.createElement("div", { key: k, className: "flex gap-3 text-xs" }, /* @__PURE__ */ React.createElement("span", { className: "text-mu shrink-0 max-w-[45%] truncate" }, k), /* @__PURE__ */ React.createElement("span", { className: "min-w-0 flex-1 text-right break-words" }, first[k] == null || first[k] === "" ? "—" : String(first[k]).slice(0, 60)))), keys.length > 14 && /* @__PURE__ */ React.createElement("div", { className: "text-[11px] text-mu" }, "+ ", keys.length - 14, " more fields"))), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, FIELDS.map(([f, l, req]) => /* @__PURE__ */ React.createElement(Field, { key: f, label: l + (req ? " *" : ""), hint: map[f] ? "Map “" + map[f] + "” → " + l + (samp[map[f]] ? " · e.g. " + samp[map[f]] : "") : hints[f] }, /* @__PURE__ */ React.createElement("select", { className: "field", value: map[f], onChange: (e) => {
-    setMap({ ...map, [f]: e.target.value });
-    setM("");
-  } }, !req && /* @__PURE__ */ React.createElement("option", { value: "" }, "— None —"), req && !map[f] && /* @__PURE__ */ React.createElement("option", { value: "" }, "Choose a field…"), keys.map((k) => /* @__PURE__ */ React.createElement("option", { key: k, value: k }, k, samp[k] ? "  ·  " + samp[k] : "")))))), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, !map.type && /* @__PURE__ */ React.createElement(Field, { label: "Amounts are", hint: sign === "auto" ? "Negative numbers become expenses, positive numbers become income." : void 0 }, /* @__PURE__ */ React.createElement("select", { className: "field", value: sign, onChange: (e) => setSign(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "auto" }, "Signed (− expense, + income)"), /* @__PURE__ */ React.createElement("option", { value: "expense" }, "All expenses"), /* @__PURE__ */ React.createElement("option", { value: "income" }, "All income"), /* @__PURE__ */ React.createElement("option", { value: "flip" }, "Reversed (+ expense, − income)"))), ds.any && /* @__PURE__ */ React.createElement(Field, { label: "Date format", hint: order === "auto" && !ds.sure ? "Dates like 05/03/2024 are ambiguous here; month first is assumed." : void 0 }, /* @__PURE__ */ React.createElement("select", { className: "field", value: order, onChange: (e) => setOrder(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "auto" }, "Auto-detect"), /* @__PURE__ */ React.createElement("option", { value: "dmy" }, "Day / Month / Year"), /* @__PURE__ */ React.createElement("option", { value: "mdy" }, "Month / Day / Year"))), /* @__PURE__ */ React.createElement(Field, { label: "Import into wallet", hint: "Expenses are deducted from it and income is added to it." }, /* @__PURE__ */ React.createElement("select", { className: "field", value: wallet, onChange: (e) => setWallet(e.target.value) }, S.wallets.map((w) => /* @__PURE__ */ React.createElement("option", { key: w.id, value: w.id }, w.name)))), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 text-sm" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: skipDup, onChange: (e) => setSkipDup(e.target.checked) }), "Skip rows already in my transactions")), /* @__PURE__ */ React.createElement("div", { className: "glass-tile p-3.5 space-y-3", "aria-live": "polite" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(Tile, { l: "Income", v: "+" + php(inc), tone: "text-pos" }), /* @__PURE__ */ React.createElement(Tile, { l: "Expenses", v: "−" + php(exp), tone: "text-neg" }), /* @__PURE__ */ React.createElement(Tile, { l: "Net", v: (inc - exp < 0 ? "−" : "+") + php(Math.abs(q(inc - exp))), tone: inc - exp < 0 ? "text-neg" : "text-pos" })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu" }, res.list.length, " will be imported into ", W.name, res.bad ? " · " + res.bad + " skipped (missing or invalid amount / date)" : "", res.dup ? " · " + res.dup + " duplicate" + (res.dup === 1 ? "" : "s") + " skipped" : "", res.skip ? " · " + res.skip + " transfer" + (res.skip === 1 ? "" : "s") + " skipped" : "", "."), res.list.slice(0, 3).map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "flex items-center gap-2 text-xs border-t border-fg/10 pt-2" }, /* @__PURE__ */ React.createElement("div", { className: "min-w-0 flex-1" }, /* @__PURE__ */ React.createElement("div", { className: "text-[13px] font-medium truncate" }, t.note || t.category), /* @__PURE__ */ React.createElement("div", { className: "text-mu truncate" }, t.category, " · ", fd(t.date))), /* @__PURE__ */ React.createElement("span", { className: "tabular-nums font-semibold shrink-0 " + (t.type === "income" ? "text-pos" : "text-neg") }, t.type === "income" ? "+" : "−", php(t.amount))))), /* @__PURE__ */ React.createElement(Err, { m }), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn flex-1", onClick: onBack }, "Back"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-p flex-[2]", disabled: !res.list.length, onClick: go }, "Import ", res.list.length, " transaction", res.list.length === 1 ? "" : "s"))));
+function siAuto(S, text) {
+  const sp = siParse(text);
+  if (sp.error) return { error: sp.error };
+  if (sp.native) return { error: "This Budgy backup has nothing in it to restore." };
+  const map = siDetect(sp.keys, sp.rows);
+  if (!map.amount) return { error: "No amount field was found in this file." };
+  const sample = sp.rows.slice(0, 200), neg = sample.some((r) => siNum(r[map.amount]) < 0);
+  const res = siBuild(sp.rows, map, { order: "auto", sign: !map.type && !neg ? "expense" : "auto", wallet: S.wallets[0].id, skipDup: true, existing: S.tx });
+  if (!res.list.length) return { error: res.dup ? "Everything in this file is already in your transactions." : "No valid transactions were found in this file." };
+  return res;
 }
 function DataSheet({ onClose }) {
-  const { S, user, restoreData } = useApp(), fileRef = useRef(null), smartRef = useRef(null), [smart, setSmart] = useState(null);
-  const [msg, setMsg] = useState(""), [ok, setOk] = useState(""), [pick, setPick] = useState(null), [withProfile, setWithProfile] = useState(true), [busy, setBusy] = useState(false);
+  const { S, restoreData, addTxBatch, setToast } = useApp(), fileRef = useRef(null);
+  const [msg, setMsg] = useState(""), [ok, setOk] = useState(""), [busy, setBusy] = useState(false);
   const stamp = off(0), rows = useMemo(() => buildTxRows(S), [S]);
-  const hasData = S.tx.length || S.debts.length || S.goals.length || S.wallets.length > 1 || S.wallets.some((w) => +w.balance);
   const exportJson = () => {
     setMsg("");
     saveFile("budgy-backup-" + stamp + ".json", JSON.stringify(buildBackup(S), null, 2), "application/json;charset=utf-8");
@@ -336,67 +320,44 @@ function DataSheet({ onClose }) {
     saveFile("budgy-transactions-" + stamp + ".csv", csvOut([["Date", "Type", "Category", "Note", "Wallet", "To wallet", "Amount (PHP)", "Status"], ...rows]), "text/csv;charset=utf-8", true);
     setOk("Transactions CSV downloaded.");
   };
+  const fail = (sub) => {
+    onClose();
+    setToast({ ok: false, msg: "Import failed", sub });
+  };
+  const handle = (text) => {
+    const bk = parseBackup(text);
+    if (!bk.error) {
+      restoreData({ ...bk.data, ...bk.profile }, { msg: "Backup restored!", sub: bk.counts.wallets + " wallets · " + bk.counts.tx + " transactions · " + bk.counts.debts + " payables & receivables · " + bk.counts.goals + " goals" });
+      return onClose();
+    }
+    const r = siAuto(S, text);
+    if (r.error) return fail(r.error);
+    addTxBatch(r.list);
+    onClose();
+  };
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     setMsg("");
     setOk("");
-    setPick(null);
     if (!f) return;
-    if (f.size > MAX_BACKUP_BYTES) return setMsg("That file is too large to be a Budgy backup.");
-    if (!/\.json$/i.test(f.name) && f.type !== "application/json") return setMsg("Choose a .json backup file. (CSV files are export-only.)");
+    if (f.size > SI_MAX_BYTES) return fail("That file is too large to import.");
+    if (!/\.json$/i.test(f.name) && f.type !== "application/json") return fail("Choose a .json file. (CSV files are export-only.)");
     setBusy(true);
     const r = new FileReader();
     r.onerror = () => {
       setBusy(false);
-      setMsg("Could not read that file. Please try again.");
+      fail("Could not read that file. Please try again.");
     };
     r.onload = () => {
       setBusy(false);
-      const text = String(r.result), res = parseBackup(text);
-      if (res.error) {
-        const sp = siParse(text);
-        if (sp.rows) setSmart({ ...sp, file: f.name, redirected: true });
-        else setMsg(res.error);
-      } else {
-        setPick({ ...res, file: f.name });
-        setWithProfile(Object.keys(res.profile).length > 0);
+      try {
+        handle(String(r.result));
+      } catch (err) {
+        fail("This file could not be imported.");
       }
     };
     r.readAsText(f);
   };
-  const onSmart = (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    setMsg("");
-    setOk("");
-    setPick(null);
-    if (!f) return;
-    if (f.size > SI_MAX_BYTES) return setMsg("That file is too large to import.");
-    if (!/\.json$/i.test(f.name) && f.type !== "application/json") return setMsg("Choose a .json file.");
-    setBusy(true);
-    const r = new FileReader();
-    r.onerror = () => {
-      setBusy(false);
-      setMsg("Could not read that file. Please try again.");
-    };
-    r.onload = () => {
-      setBusy(false);
-      const sp = siParse(String(r.result));
-      if (sp.error) setMsg(sp.error);
-      else if (sp.native) setMsg("This is a Budgy backup. Use “Restore from backup” instead.");
-      else setSmart({ ...sp, file: f.name });
-    };
-    r.readAsText(f);
-  };
-  const restore = () => {
-    if (!pick) return;
-    const patch = { ...pick.data };
-    if (withProfile) Object.assign(patch, pick.profile);
-    restoreData(patch);
-    setOk("Backup restored: " + pick.counts.wallets + " wallets, " + pick.counts.tx + " transactions, " + pick.counts.debts + " payables and receivables, " + pick.counts.goals + " goals.");
-    setPick(null);
-  };
-  if (smart) return /* @__PURE__ */ React.createElement(SmartImport, { file: smart.file, rows: smart.rows, keys: smart.keys, redirected: smart.redirected, onBack: () => setSmart(null), onClose });
-  return /* @__PURE__ */ React.createElement(Sheet, { title: "Import / Export Data", onClose }, /* @__PURE__ */ React.createElement("div", { className: "space-y-5" }, /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Export"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: exportJson }, /* @__PURE__ */ React.createElement(Ic, { n: "json", s: 17 }), "Full backup (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, "Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device."), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: exportCsv, disabled: !rows.length }, /* @__PURE__ */ React.createElement(Ic, { n: "dl", s: 17 }), "Transactions (CSV)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, rows.length, " transaction", rows.length === 1 ? "" : "s", ", all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.")), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Import"), /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".json,application/json", className: "hidden", onChange: onFile, "aria-label": "Choose a Budgy backup file" }), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy }, /* @__PURE__ */ React.createElement(Ic, { n: "upl", s: 17 }), busy ? "Reading file…" : "Restore from backup (JSON)"), !pick && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu px-1" }, "Choose a file exported from Budgy. You will see what it contains before anything is changed."), pick && /* @__PURE__ */ React.createElement("div", { className: "glass-tile p-3.5 space-y-3 fade", role: "alert" }, /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold truncate" }, pick.file), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-mu" }, pick.at ? "Exported " + pick.at : "Backup file")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement(Tile, { l: "Wallets", v: pick.counts.wallets }), /* @__PURE__ */ React.createElement(Tile, { l: "Transactions", v: pick.counts.tx }), /* @__PURE__ */ React.createElement(Tile, { l: "Payables / receivables", v: pick.counts.debts }), /* @__PURE__ */ React.createElement(Tile, { l: "Goals", v: pick.counts.goals })), pick.skipped > 0 && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu" }, pick.skipped, " invalid or incomplete item", pick.skipped === 1 ? " was" : "s were", " left out."), Object.keys(pick.profile).length > 0 && /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 text-sm" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: withProfile, onChange: (e) => setWithProfile(e.target.checked) }), "Also restore my name, avatar and appearance"), /* @__PURE__ */ React.createElement("p", { className: "text-sm text-neg" }, hasData ? "This replaces all of your current wallets, transactions, payables, receivables and goals" + (user ? ", here and in your cloud account" : "") + ". Export a backup first if you might want them back." : "This fills your empty budget with the contents of this file."), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "btn flex-1", onClick: () => setPick(null) }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-d flex-1", onClick: restore }, "Replace my data")))), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Import from another app"), /* @__PURE__ */ React.createElement("input", { ref: smartRef, type: "file", accept: ".json,application/json", className: "hidden", onChange: onSmart, "aria-label": "Choose a JSON transaction export from another app" }), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: () => smartRef.current && smartRef.current.click(), disabled: busy }, /* @__PURE__ */ React.createElement(Ic, { n: "upl", s: 17 }), "Smart import transactions (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu px-1" }, "Works with JSON exports from other budget apps. Budgy guesses the amount, date, note and category fields, you confirm the mapping and pick a wallet, and nothing is saved until you tap Import. It adds to your data and can be undone.")), /* @__PURE__ */ React.createElement(Err, { m: msg }), ok && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-pos flex gap-2", role: "status" }, /* @__PURE__ */ React.createElement(Ic, { n: "check", s: 18, cls: "shrink-0 mt-0.5" }), ok)));
+  return /* @__PURE__ */ React.createElement(Sheet, { title: "Import / Export Data", onClose }, /* @__PURE__ */ React.createElement("div", { className: "space-y-5" }, /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Export"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: exportJson }, /* @__PURE__ */ React.createElement(Ic, { n: "json", s: 17 }), "Full backup (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, "Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device."), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: exportCsv, disabled: !rows.length }, /* @__PURE__ */ React.createElement(Ic, { n: "dl", s: 17 }), "Transactions (CSV)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, rows.length, " transaction", rows.length === 1 ? "" : "s", ", all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.")), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Import"), /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".json,application/json", className: "hidden", onChange: onFile, "aria-label": "Choose a JSON file to import" }), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy }, /* @__PURE__ */ React.createElement(Ic, { n: "upl", s: 17 }), busy ? "Importing…" : "Import data (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu px-1" }, "Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically, and a toast with Undo confirms the result.")), /* @__PURE__ */ React.createElement(Err, { m: msg }), ok && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-pos flex gap-2", role: "status" }, /* @__PURE__ */ React.createElement(Ic, { n: "check", s: 18, cls: "shrink-0 mt-0.5" }), ok)));
 }

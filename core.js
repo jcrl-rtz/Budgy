@@ -648,7 +648,7 @@ function Provider({ children }) {
       if (!ts.length) return 0;
       const ids = new Set(ts.map((t) => t.id)), fwd = (s) => ({ ...s, tx: [...ts.filter((t) => !s.tx.some((x) => x.id === t.id)), ...s.tx] }), back = (s) => ({ ...s, tx: s.tx.filter((t) => !ids.has(t.id)) });
       setS(fwd);
-      offer({ title: ts.length + " transaction" + (ts.length === 1 ? "" : "s") + " imported", sub: "Tap Undo to remove them all", fwd, back, chkF: ts[0], chkB: null });
+      offer({ title: "Successfully imported " + ts.length + " transaction" + (ts.length === 1 ? "" : "s") + "!", sub: "Tap Undo to remove them all", fwd, back, chkF: ts[0], chkB: null });
       return ts.length;
     },
     delTx: (id, o) => {
@@ -771,9 +771,21 @@ function Provider({ children }) {
       setS((s) => ({ ...s, ...dataBlank() }));
     },
     // Replaces the budget data with an already-validated backup (see io.js). Name, avatar and appearance are only replaced when the backup has them.
-    restoreData: (d) => {
-      setToast(null);
+    restoreData: (d, o) => {
+      if (!o) {
+        setToast(null);
+        setS((s) => ({ ...s, ...d }));
+        return;
+      }
+      const prev = {};
+      Object.keys(d).forEach((k) => {
+        prev[k] = R.S[k];
+      });
       setS((s) => ({ ...s, ...d }));
+      setToast({ ok: true, msg: o.msg, sub: o.sub, label: "Undo", undo: () => {
+        setS((s) => ({ ...s, ...prev }));
+        setToast({ ok: true, msg: "Import undone", sub: "Your previous data is back" });
+      } });
     }
   };
   return /* @__PURE__ */ React.createElement(Ctx.Provider, { value: api }, children);

@@ -218,101 +218,54 @@ function siBuild(rows, map, o) {
   return out
 }
 
-function SmartImport({ file, rows, keys, redirected, onBack, onClose }) {
-  const { S, addTxBatch } = useApp()
-  const det = useMemo(() => siDetect(keys, rows), [rows, keys])
-  const [map, setMap] = useState(det), [wallet, setWallet] = useState(S.wallets[0].id), [order, setOrder] = useState('auto'), [skipDup, setSkipDup] = useState(true), [m, setM] = useState('')
-  const [sign, setSign] = useState(() => (!det.type && !rows.slice(0, 200).some((r) => siNum(r[det.amount]) < 0) ? 'expense' : 'auto'))
-  const samp = useMemo(() => Object.fromEntries(keys.map((k) => { const r = rows.find((x) => x[k] != null && x[k] !== ''); return [k, r ? String(r[k]).slice(0, 28) : ''] })), [rows, keys])
-  const first = rows[0] || {}, ds = map.date ? siOrder(rows.map((r) => r[map.date])) : { any: false }
-  const res = useMemo(() => siBuild(rows, map, { order, sign, wallet, skipDup, existing: S.tx }), [rows, map, order, sign, wallet, skipDup, S.tx])
-  const W = S.wallets.find((w) => w.id === wallet) || S.wallets[0]
-  const inc = q(res.list.filter((t) => t.type === 'income').reduce((a, t) => a + t.amount, 0)), exp = q(res.list.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0))
-  const FIELDS = [['amount', 'Amount', true], ['date', 'Date', false], ['note', 'Note', false], ['cat', 'Category', false], ['type', 'Income / expense column', false]]
-  const hints = { amount: 'Required.', date: 'If none, every row is dated today.', note: 'Optional.', cat: 'Optional. Unmatched names are kept as their own category.', type: 'Optional. Values like income / expense or credit / debit.' }
-  const go = () => {
-    if (!map.amount) return setM('Choose which field holds the amount.')
-    if (!res.list.length) return setM('Nothing to import with this mapping. Check the Amount and Date fields.')
-    addTxBatch(res.list); onClose()
-  }
-  return (
-    <Sheet title="Map your data" onClose={onClose}>
-      <div className="space-y-4">
-        <div className="min-w-0"><div className="text-sm font-semibold truncate">{file}</div><div className="text-xs text-mu">{rows.length} row{rows.length === 1 ? '' : 's'} found{redirected ? ' · not a Budgy backup, so it opened in the Smart Importer' : ''}</div></div>
-        <div>
-          <div className="text-xs text-mu mb-1.5 px-1">First row of your file</div>
-          <div className="glass-tile p-3 max-h-40 overflow-auto space-y-1">{keys.slice(0, 14).map((k) => <div key={k} className="flex gap-3 text-xs"><span className="text-mu shrink-0 max-w-[45%] truncate">{k}</span><span className="min-w-0 flex-1 text-right break-words">{first[k] == null || first[k] === '' ? '—' : String(first[k]).slice(0, 60)}</span></div>)}{keys.length > 14 && <div className="text-[11px] text-mu">+ {keys.length - 14} more fields</div>}</div>
-        </div>
-        <div className="space-y-3">
-          {FIELDS.map(([f, l, req]) => (
-            <Field key={f} label={l + (req ? ' *' : '')} hint={map[f] ? 'Map “' + map[f] + '” → ' + l + (samp[map[f]] ? ' · e.g. ' + samp[map[f]] : '') : hints[f]}>
-              <select className="field" value={map[f]} onChange={(e) => { setMap({ ...map, [f]: e.target.value }); setM('') }}>
-                {!req && <option value="">— None —</option>}{req && !map[f] && <option value="">Choose a field…</option>}
-                {keys.map((k) => <option key={k} value={k}>{k}{samp[k] ? '  ·  ' + samp[k] : ''}</option>)}
-              </select>
-            </Field>
-          ))}
-        </div>
-        <div className="space-y-3">
-          {!map.type && <Field label="Amounts are" hint={sign === 'auto' ? 'Negative numbers become expenses, positive numbers become income.' : undefined}><select className="field" value={sign} onChange={(e) => setSign(e.target.value)}><option value="auto">Signed (− expense, + income)</option><option value="expense">All expenses</option><option value="income">All income</option><option value="flip">Reversed (+ expense, − income)</option></select></Field>}
-          {ds.any && <Field label="Date format" hint={order === 'auto' && !ds.sure ? 'Dates like 05/03/2024 are ambiguous here; month first is assumed.' : undefined}><select className="field" value={order} onChange={(e) => setOrder(e.target.value)}><option value="auto">Auto-detect</option><option value="dmy">Day / Month / Year</option><option value="mdy">Month / Day / Year</option></select></Field>}
-          <Field label="Import into wallet" hint="Expenses are deducted from it and income is added to it."><select className="field" value={wallet} onChange={(e) => setWallet(e.target.value)}>{S.wallets.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></Field>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} />Skip rows already in my transactions</label>
-        </div>
-        <div className="glass-tile p-3.5 space-y-3" aria-live="polite">
-          <div className="grid grid-cols-3 gap-2"><Tile l="Income" v={'+' + php(inc)} tone="text-pos" /><Tile l="Expenses" v={'−' + php(exp)} tone="text-neg" /><Tile l="Net" v={(inc - exp < 0 ? '−' : '+') + php(Math.abs(q(inc - exp)))} tone={inc - exp < 0 ? 'text-neg' : 'text-pos'} /></div>
-          <p className="text-xs text-mu">{res.list.length} will be imported into {W.name}{res.bad ? ' · ' + res.bad + ' skipped (missing or invalid amount / date)' : ''}{res.dup ? ' · ' + res.dup + ' duplicate' + (res.dup === 1 ? '' : 's') + ' skipped' : ''}{res.skip ? ' · ' + res.skip + ' transfer' + (res.skip === 1 ? '' : 's') + ' skipped' : ''}.</p>
-          {res.list.slice(0, 3).map((t, i) => <div key={i} className="flex items-center gap-2 text-xs border-t border-fg/10 pt-2"><div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate">{t.note || t.category}</div><div className="text-mu truncate">{t.category} · {fd(t.date)}</div></div><span className={'tabular-nums font-semibold shrink-0 ' + (t.type === 'income' ? 'text-pos' : 'text-neg')}>{t.type === 'income' ? '+' : '−'}{php(t.amount)}</span></div>)}
-        </div>
-        <Err m={m} />
-        <div className="flex gap-2"><button type="button" className="btn flex-1" onClick={onBack}>Back</button><button type="button" className="btn btn-p flex-[2]" disabled={!res.list.length} onClick={go}>Import {res.list.length} transaction{res.list.length === 1 ? '' : 's'}</button></div>
-      </div>
-    </Sheet>
-  )
+/* ---------- The sheet ---------- */
+// v9 P5 (zero-friction): ONE import button. The file is read, recognised and imported with no questions asked:
+//   - a Budgy backup is restored straight away (with an Undo toast that brings back what it replaced);
+//   - any other JSON list of transactions goes through the field auto-detection and into the first wallet (see siAuto).
+// The result is always a toast: success, or an error when nothing recognisable was found.
+function siAuto(S, text) { // -> { list, bad, dup, skip } or { error }
+  const sp = siParse(text); if (sp.error) return { error: sp.error }
+  if (sp.native) return { error: 'This Budgy backup has nothing in it to restore.' }
+  const map = siDetect(sp.keys, sp.rows)
+  if (!map.amount) return { error: 'No amount field was found in this file.' }
+  const sample = sp.rows.slice(0, 200), neg = sample.some((r) => siNum(r[map.amount]) < 0)
+  const res = siBuild(sp.rows, map, { order: 'auto', sign: !map.type && !neg ? 'expense' : 'auto', wallet: S.wallets[0].id, skipDup: true, existing: S.tx })
+  if (!res.list.length) return { error: res.dup ? 'Everything in this file is already in your transactions.' : 'No valid transactions were found in this file.' }
+  return res
 }
 
-/* ---------- The sheet ---------- */
 function DataSheet({ onClose }) {
-  const { S, user, restoreData } = useApp(), fileRef = useRef(null), smartRef = useRef(null), [smart, setSmart] = useState(null)
-  const [msg, setMsg] = useState(''), [ok, setOk] = useState(''), [pick, setPick] = useState(null), [withProfile, setWithProfile] = useState(true), [busy, setBusy] = useState(false)
+  const { S, restoreData, addTxBatch, setToast } = useApp(), fileRef = useRef(null)
+  const [msg, setMsg] = useState(''), [ok, setOk] = useState(''), [busy, setBusy] = useState(false)
   const stamp = off(0), rows = useMemo(() => buildTxRows(S), [S])
-  const hasData = S.tx.length || S.debts.length || S.goals.length || S.wallets.length > 1 || S.wallets.some((w) => +w.balance)
 
   const exportJson = () => { setMsg(''); saveFile('budgy-backup-' + stamp + '.json', JSON.stringify(buildBackup(S), null, 2), 'application/json;charset=utf-8'); setOk('Backup downloaded. Keep it somewhere safe.') }
   const exportCsv = () => { setMsg(''); saveFile('budgy-transactions-' + stamp + '.csv', csvOut([['Date', 'Type', 'Category', 'Note', 'Wallet', 'To wallet', 'Amount (PHP)', 'Status'], ...rows]), 'text/csv;charset=utf-8', true); setOk('Transactions CSV downloaded.') }
 
+  const fail = (sub) => { onClose(); setToast({ ok: false, msg: 'Import failed', sub }) }
+  const handle = (text) => {
+    const bk = parseBackup(text)
+    if (!bk.error) { // Budgy backup: restore everything, profile included
+      restoreData({ ...bk.data, ...bk.profile }, { msg: 'Backup restored!', sub: bk.counts.wallets + ' wallets · ' + bk.counts.tx + ' transactions · ' + bk.counts.debts + ' payables & receivables · ' + bk.counts.goals + ' goals' })
+      return onClose()
+    }
+    const r = siAuto(S, text)
+    if (r.error) return fail(r.error)
+    addTxBatch(r.list) // raises the "Successfully imported X transactions!" toast (with Undo)
+    onClose()
+  }
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''
-    setMsg(''); setOk(''); setPick(null); if (!f) return
-    if (f.size > MAX_BACKUP_BYTES) return setMsg('That file is too large to be a Budgy backup.')
-    if (!/\.json$/i.test(f.name) && f.type !== 'application/json') return setMsg('Choose a .json backup file. (CSV files are export-only.)')
+    setMsg(''); setOk(''); if (!f) return
+    if (f.size > SI_MAX_BYTES) return fail('That file is too large to import.')
+    if (!/\.json$/i.test(f.name) && f.type !== 'application/json') return fail('Choose a .json file. (CSV files are export-only.)')
     setBusy(true)
     const r = new FileReader()
-    r.onerror = () => { setBusy(false); setMsg('Could not read that file. Please try again.') }
-    r.onload = () => { setBusy(false); const text = String(r.result), res = parseBackup(text); if (res.error) { const sp = siParse(text); if (sp.rows) setSmart({ ...sp, file: f.name, redirected: true }); else setMsg(res.error) } else { setPick({ ...res, file: f.name }); setWithProfile(Object.keys(res.profile).length > 0) } }
+    r.onerror = () => { setBusy(false); fail('Could not read that file. Please try again.') }
+    r.onload = () => { setBusy(false); try { handle(String(r.result)) } catch (err) { fail('This file could not be imported.') } }
     r.readAsText(f)
-  }
-  const onSmart = (e) => {
-    const f = e.target.files && e.target.files[0]; e.target.value = ''
-    setMsg(''); setOk(''); setPick(null); if (!f) return
-    if (f.size > SI_MAX_BYTES) return setMsg('That file is too large to import.')
-    if (!/\.json$/i.test(f.name) && f.type !== 'application/json') return setMsg('Choose a .json file.')
-    setBusy(true)
-    const r = new FileReader()
-    r.onerror = () => { setBusy(false); setMsg('Could not read that file. Please try again.') }
-    r.onload = () => { setBusy(false); const sp = siParse(String(r.result)); if (sp.error) setMsg(sp.error); else if (sp.native) setMsg('This is a Budgy backup. Use “Restore from backup” instead.'); else setSmart({ ...sp, file: f.name }) }
-    r.readAsText(f)
-  }
-  const restore = () => {
-    if (!pick) return
-    const patch = { ...pick.data }
-    if (withProfile) Object.assign(patch, pick.profile)
-    restoreData(patch)
-    setOk('Backup restored: ' + pick.counts.wallets + ' wallets, ' + pick.counts.tx + ' transactions, ' + pick.counts.debts + ' payables and receivables, ' + pick.counts.goals + ' goals.')
-    setPick(null)
   }
 
-  if (smart) return <SmartImport file={smart.file} rows={smart.rows} keys={smart.keys} redirected={smart.redirected} onBack={() => setSmart(null)} onClose={onClose} />
   return (
     <Sheet title="Import / Export Data" onClose={onClose}>
       <div className="space-y-5">
@@ -326,26 +279,9 @@ function DataSheet({ onClose }) {
 
         <section className="space-y-2">
           <h3 className="text-sm font-semibold">Import</h3>
-          <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} aria-label="Choose a Budgy backup file" />
-          <button className="btn w-full !justify-start" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}><Ic n="upl" s={17} />{busy ? 'Reading file…' : 'Restore from backup (JSON)'}</button>
-          {!pick && <p className="text-xs text-mu px-1">Choose a file exported from Budgy. You will see what it contains before anything is changed.</p>}
-          {pick && (
-            <div className="glass-tile p-3.5 space-y-3 fade" role="alert">
-              <div className="min-w-0"><div className="text-sm font-semibold truncate">{pick.file}</div><div className="text-xs text-mu">{pick.at ? 'Exported ' + pick.at : 'Backup file'}</div></div>
-              <div className="grid grid-cols-2 gap-2"><Tile l="Wallets" v={pick.counts.wallets} /><Tile l="Transactions" v={pick.counts.tx} /><Tile l="Payables / receivables" v={pick.counts.debts} /><Tile l="Goals" v={pick.counts.goals} /></div>
-              {pick.skipped > 0 && <p className="text-xs text-mu">{pick.skipped} invalid or incomplete item{pick.skipped === 1 ? ' was' : 's were'} left out.</p>}
-              {Object.keys(pick.profile).length > 0 && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={withProfile} onChange={(e) => setWithProfile(e.target.checked)} />Also restore my name, avatar and appearance</label>}
-              <p className="text-sm text-neg">{hasData ? 'This replaces all of your current wallets, transactions, payables, receivables and goals' + (user ? ', here and in your cloud account' : '') + '. Export a backup first if you might want them back.' : 'This fills your empty budget with the contents of this file.'}</p>
-              <div className="flex gap-2"><button className="btn flex-1" onClick={() => setPick(null)}>Cancel</button><button className="btn btn-d flex-1" onClick={restore}>Replace my data</button></div>
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Import from another app</h3>
-          <input ref={smartRef} type="file" accept=".json,application/json" className="hidden" onChange={onSmart} aria-label="Choose a JSON transaction export from another app" />
-          <button className="btn w-full !justify-start" onClick={() => smartRef.current && smartRef.current.click()} disabled={busy}><Ic n="upl" s={17} />Smart import transactions (JSON)</button>
-          <p className="text-xs text-mu px-1">Works with JSON exports from other budget apps. Budgy guesses the amount, date, note and category fields, you confirm the mapping and pick a wallet, and nothing is saved until you tap Import. It adds to your data and can be undone.</p>
+          <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} aria-label="Choose a JSON file to import" />
+          <button className="btn btn-p w-full !justify-start" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}><Ic n="upl" s={17} />{busy ? 'Importing…' : 'Import data (JSON)'}</button>
+          <p className="text-xs text-mu px-1">Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically, and a toast with Undo confirms the result.</p>
         </section>
 
         <Err m={msg} />

@@ -1,3 +1,15 @@
+# Budgy v9 Phase 6: zero-friction import
+
+- **One Import button, no questions.** Settings > Import / Export Data now has a single "Import data (JSON)" button. Picking a file imports it immediately: no mapping screen, no wallet picker, no confirmation modal. The sheet closes and a toast reports the result.
+- **Budgy backup:** detected automatically and restored at once (data and profile). Toast: "Backup restored!" with counts and an **Undo** that puts back exactly what was replaced.
+- **Other apps' transaction JSON:** Amount / Date / Note / Category (and an income / expense column) are auto-detected under the hood. Every row goes into your first wallet; signed amounts split into expense (negative) and income (positive), and a file with no negatives and no type column is treated as all expenses. Missing dates become today. Rows already in your transactions are skipped. Toast: "Successfully imported X transactions!" with Undo.
+- **Errors** show an error toast: invalid JSON, no amount field found, nothing valid, everything already imported, wrong file type, file too large.
+- Removed the Map your data sheet (`SmartImport`). `siParse` / `siDetect` / `siBuild` are unchanged and now run through `siAuto` in io.jsx. `restoreData(d, { msg, sub })` in core.jsx gives the silent restore + Undo toast.
+- `sw.js` VERSION is `budgy-v9-p6`; script query strings are `?v=v9p6`.
+- Files changed: src/core.jsx, src/io.jsx and compiled core.js, io.js, index.html, sw.js, README.md.
+
+---
+
 # Budgy v9 Phase 5: Data Portability (Export + Smart Import)
 
 - **Native backup (Settings > Import / Export Data).** "Full backup (JSON)" downloads `budgy-backup-YYYY-MM-DD.json` with wallets, transactions, payables / receivables (with payment history), wallet allocations, Smart Plan allocations, sources, goals and profile. "Restore from backup" validates the file, shows what it contains, then replaces the data. Checked with a round trip: wallet balances, Spendable and Liquid are identical after restore.
