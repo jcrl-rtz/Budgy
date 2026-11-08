@@ -1,13 +1,26 @@
-# Budgy v8 P1b: Phase 4 allocations + UI/UX hotfixes
+# Budgy v9 Phase 2: Undo / Redo for transactions
 
-- **Mobile layout**: due dates are never cut off. The Allocate tab rows (target allocation, priority-short list, "if your receivables arrive") put the name and the due date on their own wrapping lines instead of one `truncate` line. Cards wrap long text (`overflow-wrap`) and keep amounts on one line.
-- **Receivables vs Payables**: every card now has a small caption (`Who owes you` on receivables, `Pay to` on payables) and an explicit `Due Nov 14 · in 8d` line.
-- **Over-receiving**: Receive accepts more than the expected amount (payables are still capped at what is left). The whole amount lands in the wallet, the receivable is marked settled and the card shows `+₱X extra`. A receivable can be edited below what was already received.
-- **Header cleanup**: a source named "Payables" / "Receivables" no longer shows a second "Payable" / "Receivable" badge; the title itself is tinted red / green. Custom sources (Installments, Family…) keep their badge.
-- **Post-login veil**: full-screen "Getting your budget ready" overlay after signing in (also when a signed-in user reopens the app). It waits for the cloud sync (min 0.9 s, max 7 s) and fades out, hiding theme and layout shifts. Onboarding waits for it.
-- **Wallet allocations (Phase 4)**: `d.allocations = [{ walletId, amount }]` on payables is deducted from Spendable (`calc().locked`) but never from wallet balances; it shrinks automatically as payments are recorded. Pending: `...` menu has Allocate Funds / Edit Allocation / Remove Allocation, and the sheet has per-wallet amounts, Max, Clear and Remove. The payable card shows `₱500 / ₱1,000 Allocated` with a bar. The Allocate tab now shows the same lock bar per payable, an Allocate funds / Edit wallet allocation button, and a "Locked per wallet" list.
-- Build: run esbuild with the flags in `build.sh` (it is `npx esbuild`, so it needs network or a local esbuild).
-- `sw.js` VERSION is `budgy-v8-p1b`; script query strings are `?v=v8p1b`.
+## What changed
+- **Undo toast on every transaction action.** Adding, editing or deleting a transaction now shows a toast ("Expense saved", "Changes saved", "Transaction deleted") with the amount, category and wallet, and an **Undo** button. It stays for 7 seconds, or until the next action replaces it. Only the most recent action can be undone.
+- **Exact revert.** Wallet balances are never stored (`calc()` rebuilds them from opening balance + the transaction list), so Undo just puts the transaction list back: an added entry is removed, an edited one gets its previous version back in the same slot, a deleted one returns at its original position in History. Balances, Home totals and category spending are identical to before.
+- **Redo.** Tapping Undo shows an "Undone" toast with a **Redo** button (also 7 seconds), which re-applies the same action; Redo offers Undo again.
+- **Safe edge cases.** Saving an edit with no changes does nothing (no toast). If a wallet the transaction needs was deleted while the toast was open, Undo / Redo is refused with a message instead of leaving a stray entry. Loading sample data, clearing data, restoring a backup, logging out and a cloud sync replacing the budget all clear the toast, so an old Undo can never touch different data.
+- **Implementation.** `core.js`: pure helpers `txPut` / `txDrop` / `txOk` / `txSub`, an `offer` / `step` engine in `Provider`, and `addTx` / `delTx` / `updTx` now raise the toast themselves (optional last argument `{ title, sub }` re-words it, `false` saves silently). The toast state moved from `App` into `Provider` (`toast`, `setToast` in `useApp()`). `shortcuts.js` Toast: the button label comes from `t.label` (default "Undo") and the toast closes before the action runs, so the Redo toast it raises is not cleared. The `?action=addExpense` deep link uses the same mechanism (its own wording). `p2.js` needed no change.
+- `sw.js` VERSION is `budgy-v9-p2`; script query strings are `?v=v9p2`.
+- Files changed: src/core.jsx, src/shortcuts.jsx, src/app.jsx and their compiled .js files, index.html, sw.js, README.md.
+
+---
+
+# Budgy v9 Phase 1: form overlap hotfix, History tab, edit transactions
+
+## What changed
+- **Add transaction layout bug fixed.** Date and Note were two columns, and the native date input on iOS Safari ignores the column width, so it ran over the Note field. Date and Note are now full-width rows. A global CSS fix (`index.html`: `.grid > * { min-width: 0 }`, `.field` max-width, normalised `input[type=date]`) protects every form. The other side-by-side forms (Add payable/receivable Total + Due date, Shortcut Amount + Note) now stack on phones and sit two-up from 640px.
+- **History tab** (new, between Wallets and Pending; also "View all" on Home's Recent activity). Every transaction, newest first, grouped by day with a daily net. Search (note, category, wallet, amount), type chips (All / Expenses / Income / Transfers) and a wallet filter. Future-dated entries carry a "Scheduled" badge. Payments recorded on payables / receivables are listed too, with their Undo button. 40 rows at a time with "Show more".
+- **Edit transaction.** Tap any transaction (History or Home) to open the same sheet in Edit mode: change amount, category, date, note and wallet (From and To for a transfer). The type is fixed. A two-step Delete is at the bottom.
+- **Balance maths.** Wallet balances are never stored: `calc()` rebuilds them from each wallet's opening balance plus the transaction list. Editing a transaction in place (`updTx` in `core.js`) therefore removes its old effect from the old wallet and applies the new one to the new wallet, with nothing to drift. In Edit mode the wallet list and the "only has" check use balances **without** the transaction being edited, so it is never counted twice. A note-only edit is never blocked by the current balance.
+- Phone nav now has six icons; the active circle shrinks to fit (`min(54px, 94%)`).
+- `sw.js` VERSION is `budgy-v9-p1`; script query strings are `?v=v9p1`.
+- Files changed: src/core.jsx, src/p2.jsx, src/pages.jsx, src/app.jsx, src/shortcuts.jsx and their compiled .js files, index.html, sw.js, README.md.
 
 ---
 

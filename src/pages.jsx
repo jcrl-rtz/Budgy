@@ -248,7 +248,7 @@ function Home({ goto, openSheet }) {
   const cats = Object.entries(c.cat).sort((a, b) => b[1] - a[1])
   const empty = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.every((w) => !+w.balance)
   const entries = [
-    ...S.tx.filter((x) => x.date <= t0).map((x) => ({ id: x.id, type: x.type, title: x.note || x.category, sub: x.category + ' · ' + ((W[x.wallet] || {}).name || 'Removed') + (x.type === 'transfer' ? ' → ' + ((W[x.to] || {}).name || '?') : ''), amount: x.amount, date: x.date })),
+    ...S.tx.filter((x) => x.date <= t0).map((x) => ({ id: x.id, type: x.type, title: x.note || x.category, sub: x.category + ' · ' + ((W[x.wallet] || {}).name || 'Removed') + (x.type === 'transfer' ? ' → ' + ((W[x.to] || {}).name || '?') : ''), amount: x.amount, date: x.date, tx: x })),
     ...S.debts.flatMap((d) => (d.payments || []).map((p) => ({ id: p.id, type: d.kind === 'payable' ? 'expense' : 'income', title: (d.kind === 'payable' ? 'Paid · ' : 'Received · ') + d.party, sub: d.cat + ' · ' + ((W[p.wallet] || {}).name || 'Removed'), amount: p.amount, date: p.date, undo: [d.id, p.id] })))
   ].sort((a, b) => b.date.localeCompare(a.date))
   const pal = palette(ui.accent, Math.max(cats.length, 1))
@@ -343,13 +343,15 @@ function Home({ goto, openSheet }) {
 
       {showRecent && (
         <Glass i={5} className="p-3.5 sm:p-4">
-          <div className="mini-h"><b>Recent activity</b><span>{Math.min(4, entries.length) + ' latest'}</span></div>
+          <div className="mini-h"><b>Recent activity</b><button type="button" className="text-[12px] font-medium whitespace-nowrap text-ac" onClick={() => goto('history')}>View all</button></div>
           <div className="mt-1.5">
             {entries.slice(0, 4).map((x, i) => (
               <div key={x.id} className={'flex items-center gap-2.5 py-1.5 ' + (i ? 'border-t border-fg/10' : '')}>
-                <span className={'grid place-items-center w-8 h-8 rounded-full shrink-0 ' + (x.type === 'income' ? 'bg-pos/15 text-pos' : x.type === 'expense' ? 'bg-neg/15 text-neg' : 'bg-fg/10 text-mu')}><Ic n={x.type === 'income' ? 'up' : x.type === 'expense' ? 'down' : 'swap'} s={14} /></span>
-                <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate leading-[18px]">{x.title}</div><div className="text-[11px] text-mu truncate leading-[15px]">{x.sub} · {fd(x.date)}</div></div>
-                <div className={'text-[13px] font-semibold whitespace-nowrap tabular-nums text-right ' + (x.type === 'income' ? 'text-pos' : x.type === 'expense' ? 'text-neg' : '')}>{x.type === 'income' ? '+' : x.type === 'expense' ? '−' : ''}{php(x.amount)}</div>
+                <button type="button" disabled={!x.tx} aria-label={x.tx ? 'Edit ' + x.title : undefined} onClick={() => x.tx && openSheet({ k: 'tx', item: x.tx })} className="flex items-center gap-2.5 min-w-0 flex-1 text-left disabled:cursor-default">
+                  <span className={'grid place-items-center w-8 h-8 rounded-full shrink-0 ' + (x.type === 'income' ? 'bg-pos/15 text-pos' : x.type === 'expense' ? 'bg-neg/15 text-neg' : 'bg-fg/10 text-mu')}><Ic n={x.type === 'income' ? 'up' : x.type === 'expense' ? 'down' : 'swap'} s={14} /></span>
+                  <div className="min-w-0 flex-1"><div className="text-[13px] font-medium truncate leading-[18px]">{x.title}</div><div className="text-[11px] text-mu truncate leading-[15px]">{x.sub} · {fd(x.date)}</div></div>
+                  <div className={'text-[13px] font-semibold whitespace-nowrap tabular-nums text-right ' + (x.type === 'income' ? 'text-pos' : x.type === 'expense' ? 'text-neg' : '')}>{x.type === 'income' ? '+' : x.type === 'expense' ? '−' : ''}{php(x.amount)}</div>
+                </button>
                 {x.undo && <UndoBtn onClick={() => undoPay(x.undo[0], x.undo[1])} label={'Undo ' + x.title} />}
               </div>
             ))}

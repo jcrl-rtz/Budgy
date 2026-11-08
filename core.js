@@ -394,10 +394,23 @@ function calc(S) {
     projected: q(liquid + pend + dRec - dPay - fc)
   };
 }
+const txOk = (s, t) => s.wallets.some((w) => w.id === t.wallet) && (t.type !== "transfer" || s.wallets.some((w) => w.id === t.to));
+const txDrop = (s, id) => s.tx.some((t) => t.id === id) ? { ...s, tx: s.tx.filter((t) => t.id !== id) } : s;
+const txPut = (s, t, at) => {
+  const tx = s.tx.slice(), i = tx.findIndex((x) => x.id === t.id);
+  if (i >= 0) tx[i] = t;
+  else tx.splice(Math.max(0, Math.min(at | 0, tx.length)), 0, t);
+  return { ...s, tx };
+};
+const txSub = (s, t) => {
+  const W = (id) => (s.wallets.find((w) => w.id === id) || {}).name || "Removed wallet";
+  return (t.type === "income" ? "+" : t.type === "expense" ? "−" : "") + php(t.amount) + " · " + (t.type === "transfer" ? W(t.wallet) + " → " + W(t.to) : (t.category || "") + " · " + W(t.wallet));
+};
 const Ctx = createContext();
 const useApp = () => useContext(Ctx);
 function Provider({ children }) {
   const [S, setS] = useState(load), [user, setUser] = useState(null), [ready, setReady] = useState(false), [sync, setSync] = useState("local");
+  const [toast, setToast] = useState(null);
   const [guest, setGuestState] = useState(() => ls.get(GK) === "1"), [sysDark, setSysDark] = useState(() => !!(mq() && mq().matches));
   const R = useRef({ S: null, t: +(ls.get(TK) || 0), sent: 0, ready: false, mounted: false, skip: false, timer: 0, uid: null, lock: false }).current;
   const ui = useMemo(() => {
@@ -428,6 +441,7 @@ function Provider({ children }) {
     R.sent = d.t;
     R.S = ns;
     ls.set(TK, String(d.t));
+    setToast(null);
     setS(ns);
     setSync("synced");
   };
@@ -439,6 +453,7 @@ function Provider({ children }) {
     R.sent = 0;
     R.ready = false;
     R.S = ns;
+    setToast(null);
     setS(ns);
     ls.del(TK);
     ls.set(KEY, JSON.stringify(ns));
@@ -570,6 +585,16 @@ function Provider({ children }) {
       setGuestState(false);
     }
   };
+  const step = (op, dir) => {
+    const undoing = dir === "back", need = undoing ? op.chkB : op.chkF;
+    if (need && !txOk(R.S, need)) {
+      setToast({ ok: false, msg: "Can’t " + (undoing ? "undo" : "redo") + " that", sub: "A wallet it uses has been deleted." });
+      return;
+    }
+    setS(undoing ? op.back : op.fwd);
+    setToast({ ok: true, msg: undoing ? "Undone" : "Redone", sub: undoing ? op.title + " · balances restored" : op.title, label: undoing ? "Redo" : "Undo", undo: () => step(op, undoing ? "fwd" : "back") });
+  };
+  const offer = (op) => setToast({ ok: true, msg: op.title, sub: op.sub, label: "Undo", undo: () => step(op, "back") });
   const upd = (key, id, p) => setS((s) => ({ ...s, [key]: s[key].map((x) => x.id === id ? { ...x, ...p } : x) }));
   const api = {
     S,
@@ -581,6 +606,8 @@ function Provider({ children }) {
     sync,
     auth,
     fbEnabled: !!fb.enabled,
+    toast,
+    setToast,
     set: (p) => setS((s) => ({ ...s, ...p })),
     // Wallets
     addWallet: (w) => setS((s) => ({ ...s, wallets: [...s.wallets, { id: nid(), ...w }] })),
@@ -606,14 +633,33 @@ function Provider({ children }) {
         })
       };
     }),
-    // Transactions
-    addTx: (x) => {
-      const id = nid();
-      setS((s) => ({ ...s, tx: [{ id, ...x }, ...s.tx] }));
+    // Transactions. Every add / edit / delete raises a toast with Undo; Undo then offers Redo (see offer / step above the api object).
+    // Only the most recent action can be undone: the next action replaces the toast, and the toast clears itself after a few seconds.
+    // `o` ({ title, sub }) lets a caller word the toast itself (the deep-link save does); `o === false` saves silently.
+    addTx: (x, o) => {
+      const id = nid(), t = { id, ...x };
+      setS((s) => txPut(s, t, 0));
+      if (o !== false) offer({ title: o && o.title || t.type[0].toUpperCase() + t.type.slice(1) + " saved", sub: o && o.sub || txSub(R.S, t), fwd: (s) => txPut(s, t, 0), back: (s) => txDrop(s, id), chkF: t, chkB: null });
       return id;
     },
-    // returns the new id so a toast can offer Undo
-    delTx: (id) => setS((s) => ({ ...s, tx: s.tx.filter((t) => t.id !== id) })),
+    delTx: (id, o) => {
+      const at = R.S.tx.findIndex((t2) => t2.id === id);
+      if (at < 0) return;
+      const t = R.S.tx[at];
+      setS((s) => txDrop(s, id));
+      if (o !== false) offer({ title: o && o.title || "Transaction deleted", sub: o && o.sub || txSub(R.S, t), fwd: (s) => txDrop(s, id), back: (s) => txPut(s, t, at), chkF: null, chkB: t });
+    },
+    // v9 P1: edit a transaction in place. Wallet balances are never stored: calc() rebuilds them from the opening balance + this list,
+    // so changing the amount, wallet, destination or date automatically takes the old effect off the old wallet and puts the new one on the new wallet.
+    // v9 P2: the old version is kept for Undo. Saving without changing anything does nothing (no toast, no fake undo step).
+    updTx: (id, p, o) => {
+      const before = R.S.tx.find((t) => t.id === id);
+      if (!before) return;
+      const after = { ...before, ...p };
+      if (Object.keys(p).every((k) => before[k] === after[k])) return;
+      setS((s) => txPut(s, after));
+      if (o !== false) offer({ title: o && o.title || "Changes saved", sub: o && o.sub || txSub(R.S, after), fwd: (s) => txPut(s, after), back: (s) => txPut(s, before), chkF: after, chkB: before });
+    },
     // Payables and receivables (a payment moves money in or out of a wallet through calc())
     addDebt: (d) => setS((s) => ({ ...s, debts: [...s.debts, { id: nid(), paid: 0, payments: [], ...d }] })),
     // v8 P2: an edit that carries `isRecurring` replaces the item's recurring fields (off = they are removed); other edits leave them alone.
@@ -697,10 +743,19 @@ function Provider({ children }) {
     delGoal: (id) => setS((s) => ({ ...s, goals: s.goals.filter((g) => g.id !== id) })),
     addToGoal: (id, amt) => setS((s) => ({ ...s, goals: s.goals.map((g) => g.id === id ? { ...g, saved: q(g.saved + amt) } : g) })),
     // Data
-    loadSample: () => setS((s) => ({ ...s, ...sample() })),
-    clearData: () => setS((s) => ({ ...s, ...dataBlank() })),
+    loadSample: () => {
+      setToast(null);
+      setS((s) => ({ ...s, ...sample() }));
+    },
+    clearData: () => {
+      setToast(null);
+      setS((s) => ({ ...s, ...dataBlank() }));
+    },
     // Replaces the budget data with an already-validated backup (see io.js). Name, avatar and appearance are only replaced when the backup has them.
-    restoreData: (d) => setS((s) => ({ ...s, ...d }))
+    restoreData: (d) => {
+      setToast(null);
+      setS((s) => ({ ...s, ...d }));
+    }
   };
   return /* @__PURE__ */ React.createElement(Ctx.Provider, { value: api }, children);
 }

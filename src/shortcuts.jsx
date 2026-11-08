@@ -169,7 +169,7 @@ function ShortcutsSheet({ onClose }) {
               {type === 'transfer' && <Field label="To wallet"><select className="field" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose in the app</option>{S.wallets.map((w) => <option key={w.id} value={w.name}>{w.name}</option>)}</select></Field>}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Amount (optional)" hint="Leave empty to type it in the app."><input className="field" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
             <Field label={isTx ? 'Note (optional)' : 'Name (optional)'}><input className="field" maxLength={40} placeholder={isTx ? 'e.g. Lunch' : 'e.g. Phone'} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           </div>
@@ -309,7 +309,7 @@ function BackTapSheet({ onClose }) {
   )
 }
 
-/* ---------- 5. Toast (confirmation with optional Undo) ---------- */
+/* ---------- 5. Toast (confirmation with optional Undo / Redo button; v9 P2: t.label names the button, default "Undo") ---------- */
 function Toast({ t, onClose }) {
   useEffect(() => {
     if (!t) return
@@ -322,7 +322,7 @@ function Toast({ t, onClose }) {
       <div className="toast fade">
         <span className={'toast-ic ' + (t.ok ? 'ok' : 'bad')}><Ic n={t.ok ? 'check' : 'alert'} s={16} /></span>
         <div className="min-w-0 flex-1"><div className="toast-t">{t.msg}</div>{t.sub && <div className="toast-s">{t.sub}</div>}</div>
-        {t.undo && <button className="toast-b" onClick={() => { t.undo(); onClose() }}>Undo</button>}
+        {t.undo && <button className="toast-b" onClick={() => { onClose(); t.undo() }}>{t.label || 'Undo'}</button>}
         <button className="toast-x" onClick={onClose} aria-label="Dismiss"><Ic n="x" s={14} /></button>
       </div>
     </div>
