@@ -1,3 +1,14 @@
+# Budgy v9 Phase 7: import can no longer fail silently
+
+- **Loud feedback, always.** Every import now ends in BOTH a toast and a large alert at the top of the Import / Export sheet (which stays open until you tap Done). Success: "✅ Successfully imported X transactions!" (or "✅ Backup restored!") with the wallet, the net amount and any skipped rows. Failure: "❌ Import Failed: Could not find amount or date values in this file. Detected keys: [first 3 keys]." Other failures (not JSON, too large, wrong file type, nothing new) are also shown the same way.
+- **Forced state refresh.** New `refreshState()` in core.jsx re-normalises the budget through the same `fix()` the cloud sync uses and creates a new state object, so balances, History, Home and the local / cloud save all update at once after any import.
+- **Custom schema supported.** `ts` -> Date (seconds, milliseconds, microseconds or ISO), `id` -> Note / reference, `kind` -> Category (or the income / expense type when its values say so), Amount -> any real number found anywhere in the record. Records are now deep-flattened (`data.value.sum`), and the file can be an array, an object holding an array, an object of records (`{ "a1": {...} }`), a single record, or JSON Lines. A UTF-8 BOM no longer breaks parsing.
+- **Safety fix.** A file is only treated as a Budgy backup when it says `"app": "budgy"` or contains valid Budgy data; before, a foreign file with a `tx` array could be read as an empty backup. Junk files with no date are rejected instead of guessed.
+- `sw.js` VERSION is `budgy-v9-p7`; script query strings are `?v=v9p7`.
+- Files changed: src/core.jsx, src/io.jsx and compiled core.js, io.js, index.html, sw.js, README.md.
+
+---
+
 # Budgy v9 Phase 6: zero-friction import
 
 - **One Import button, no questions.** Settings > Import / Export Data now has a single "Import data (JSON)" button. Picking a file imports it immediately: no mapping screen, no wallet picker, no confirmation modal. The sheet closes and a toast reports the result.

@@ -648,7 +648,7 @@ function Provider({ children }) {
       if (!ts.length) return 0;
       const ids = new Set(ts.map((t) => t.id)), fwd = (s) => ({ ...s, tx: [...ts.filter((t) => !s.tx.some((x) => x.id === t.id)), ...s.tx] }), back = (s) => ({ ...s, tx: s.tx.filter((t) => !ids.has(t.id)) });
       setS(fwd);
-      offer({ title: "Successfully imported " + ts.length + " transaction" + (ts.length === 1 ? "" : "s") + "!", sub: "Tap Undo to remove them all", fwd, back, chkF: ts[0], chkB: null });
+      offer({ title: "✅ Successfully imported " + ts.length + " transaction" + (ts.length === 1 ? "" : "s") + "!", sub: "Tap Undo to remove them all", fwd, back, chkF: ts[0], chkB: null });
       return ts.length;
     },
     delTx: (id, o) => {
@@ -771,6 +771,9 @@ function Provider({ children }) {
       setS((s) => ({ ...s, ...dataBlank() }));
     },
     // Replaces the budget data with an already-validated backup (see io.js). Name, avatar and appearance are only replaced when the backup has them.
+    // v9 P6: force a global refresh after an import: re-normalises the budget (same fix() the cloud sync uses) into a NEW state object, so every screen,
+    // calc() balance, the local cache and the cloud save all re-run immediately.
+    refreshState: () => setS((s) => fix(s)),
     restoreData: (d, o) => {
       if (!o) {
         setToast(null);

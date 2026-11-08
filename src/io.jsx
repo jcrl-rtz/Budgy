@@ -65,6 +65,7 @@ function parseBackup(text) {
     if (!w || typeof w !== 'object' || !str(w.name, 40) || !isNum(+w.balance)) { skipped++; return }
     wallets.push({ id: uid(w.id), name: str(w.name, 40), type: str(w.type, 20) || 'Cash', balance: q(+w.balance), color: cleanColor(w.color) })
   })
+  const defaultWallet = !wallets.length
   if (!wallets.length) wallets.push({ id: uid('w1'), name: 'Cash on Hand', type: 'Cash', balance: 0 })
   const wid = new Set(wallets.map((w) => w.id))
 
@@ -114,7 +115,7 @@ function parseBackup(text) {
   if (HOME_KEYS.includes(p.homePin)) profile.homePin = p.homePin
   if (typeof p.showCashPie === 'boolean') profile.showCashPie = p.showCashPie
 
-  return { data: { wallets, tx, debts, goals, alloc, srcs }, profile, counts: { wallets: wallets.length, tx: tx.length, debts: debts.length, goals: goals.length }, skipped, at: wrapped && typeof raw.exportedAt === 'string' ? raw.exportedAt.slice(0, 10) : '' }
+  return { defaultWallet, data: { wallets, tx, debts, goals, alloc, srcs }, profile, counts: { wallets: wallets.length, tx: tx.length, debts: debts.length, goals: goals.length }, skipped, at: wrapped && typeof raw.exportedAt === 'string' ? raw.exportedAt.slice(0, 10) : '' }
 }
 
 /* ---------- Smart Importer (v9 P5): transactions from other budget apps ---------- */
@@ -123,25 +124,51 @@ function parseBackup(text) {
 const SI_MAX_ROWS = 20000, SI_MAX_BYTES = 12 * 1024 * 1024
 const siPad = (n) => (n < 10 ? '0' : '') + n
 const siYmd = (y, m, d) => { const t = new Date(y, m - 1, d); return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d && y >= 1990 && y <= 2100 ? y + '-' + siPad(m) + '-' + siPad(d) : null }
-const siFlat = (o) => { // one level of nesting is flattened: { a: { b: 1 } } -> 'a.b'. Arrays and deeper objects are ignored.
-  const r = {}
-  Object.keys(o).forEach((k) => { const v = o[k]; if (v && typeof v === 'object') { if (!Array.isArray(v)) Object.keys(v).forEach((j) => { const x = v[j]; if (x == null || typeof x !== 'object') r[k + '.' + j] = x }) } else r[k] = v })
+const siFlat = (o) => { // DEEP flatten: { a: { b: { c: 1 } } } -> 'a.b.c' (to 4 levels). Short arrays of plain values become 'k.0', 'k.1'; arrays of objects are ignored.
+  const r = {}, walk = (v, p, d) => {
+    if (v == null || typeof v !== 'object') { if (p) r[p] = v; return }
+    if (d >= 4 || Object.keys(r).length > 80) return
+    if (Array.isArray(v)) { if (v.length && v.length <= 8 && v.every((x) => x == null || typeof x !== 'object')) v.forEach((x, i) => walk(x, p + '.' + i, d + 1)); return }
+    Object.keys(v).forEach((k) => walk(v[k], p ? p + '.' + k : k, d + 1))
+  }
+  walk(o, '', 0)
   return r
 }
-const siObjs = (a) => (Array.isArray(a) && a.length && a.filter((x) => x && typeof x === 'object' && !Array.isArray(x)).length >= Math.ceil(a.length * 0.8) ? a.filter((x) => x && typeof x === 'object' && !Array.isArray(x)) : null)
-const siFind = (raw) => { // the array of transaction objects: the file itself, or the first array of objects inside it (also one level deeper)
+const siPlain = (x) => x && typeof x === 'object' && !Array.isArray(x)
+const siObjs = (a) => (Array.isArray(a) && a.length && a.filter(siPlain).length >= Math.ceil(a.length * 0.8) ? a.filter(siPlain) : null)
+const siFind = (raw, depth) => { // the list of transaction objects: the file itself, the first array of objects inside it (up to 3 levels down),
+  // an object whose values are the records ({ "id1": {...}, "id2": {...} }), or a single record.
+  const d = depth || 0
   if (Array.isArray(raw)) return siObjs(raw)
-  if (!raw || typeof raw !== 'object') return null
-  for (const k of Object.keys(raw)) { const f = siObjs(raw[k]); if (f) return f }
-  for (const k of Object.keys(raw)) { const v = raw[k]; if (v && typeof v === 'object' && !Array.isArray(v)) for (const j of Object.keys(v)) { const f = siObjs(v[j]); if (f) return f } }
+  if (!siPlain(raw)) return null
+  if (d < 3) for (const k of Object.keys(raw)) { const v = raw[k]; const f = Array.isArray(v) ? siObjs(v) : siPlain(v) ? siFind(v, d + 1) : null; if (f) return f }
+  if (d === 0) {
+    const ks = Object.keys(raw), vals = ks.map((k) => raw[k])
+    if (ks.length > 1 && vals.filter(siPlain).length >= Math.ceil(ks.length * 0.8)) return ks.filter((k) => siPlain(raw[k])).map((k) => ({ _key: k, ...raw[k] }))
+    if (ks.length) return [raw] // one record on its own
+  }
   return null
 }
+const siKeys = (text) => { // first keys found in a file, for error messages
+  try {
+    const t = JSON.parse(String(text).replace(/^\uFEFF/, '')); const o = Array.isArray(t) ? t.find(siPlain) : t
+    return siPlain(o) ? Object.keys(o).slice(0, 3) : []
+  } catch (e) {
+    const m = String(text).match(/"([^"\\]{1,30})"\s*:/g) || []; return [...new Set(m.map((x) => x.replace(/"\s*:$/, '').slice(1)))].slice(0, 3)
+  }
+}
 function siParse(text) { // -> { error } | { native: true } | { rows, keys }
+  text = String(text).replace(/^\uFEFF/, '').trim()
   let raw
-  try { raw = JSON.parse(text) } catch (e) { return { error: 'That file is not valid JSON.' } }
+  try { raw = JSON.parse(text) } catch (e) {
+    // JSON Lines: one object per line
+    const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    try { raw = lines.length > 1 ? lines.map((x) => JSON.parse(x)) : null } catch (e2) { raw = null }
+    if (!raw) return { error: 'That file is not valid JSON.' }
+  }
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.app === BACKUP_APP) return { native: true }
   const found = siFind(raw)
-  if (!found) return { error: 'No list of transactions was found. The file should be an array of objects, for example [{ "amount": 12.5, "date": "2024-03-01" }].' }
+  if (!found) return { error: 'No list of transactions was found.' }
   if (found.length > SI_MAX_ROWS) return { error: 'This file has ' + found.length + ' rows. The limit is ' + SI_MAX_ROWS + ' per import; split the file and import it in parts.' }
   const rows = found.map(siFlat), seen = new Set(), keys = []
   rows.slice(0, 300).forEach((r) => Object.keys(r).forEach((k) => { if (!seen.has(k) && r[k] != null && r[k] !== '') { seen.add(k); keys.push(k) } }))
@@ -166,13 +193,13 @@ const siOrder = (vals) => { // day-first or month-first for 05/03/2024 style dat
   vals.forEach((v) => { const m = siSlash(v); if (!m) return; any = true; if (+m[1] > 12) dmy = true; if (+m[2] > 12) mdy = true })
   return { any, order: dmy && !mdy ? 'dmy' : 'mdy', sure: dmy !== mdy }
 }
-const siDate = (v, order) => { // -> 'YYYY-MM-DD' or null. Handles ISO, 'YYYY-MM-DD HH:mm', DD/MM/YYYY, MM/DD/YYYY, 'Mar 5, 2024', epoch seconds / milliseconds.
+const siDate = (v, order) => { // -> 'YYYY-MM-DD' or null. Handles ISO, 'YYYY-MM-DD HH:mm', DD/MM/YYYY, MM/DD/YYYY, 'Mar 5, 2024' and epoch timestamps (s / ms / µs / ns).
   const ep = (n) => { const d = new Date(n); return isNaN(d) ? null : siYmd(d.getFullYear(), d.getMonth() + 1, d.getDate()) }
-  if (typeof v === 'number') return v >= 1e12 ? ep(v) : v >= 1e9 && v < 1e11 ? ep(v * 1000) : null
+  const num = (n) => (n >= 1e17 ? ep(n / 1e6) : n >= 1e14 ? ep(n / 1e3) : n >= 1e11 ? ep(n) : n >= 1e9 ? ep(n * 1000) : null)
+  if (typeof v === 'number') return isFinite(v) ? num(v) : null
   if (typeof v !== 'string') return null
   const t = v.trim(); if (!t) return null
-  if (/^\d{10}$/.test(t)) return ep(+t * 1000)
-  if (/^\d{13}$/.test(t)) return ep(+t)
+  if (/^\d{9,19}(\.\d+)?$/.test(t)) return num(+t)
   let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); if (m) return siYmd(+m[1], +m[2], +m[3])
   m = siSlash(t); if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return order === 'dmy' ? siYmd(y, +m[2], +m[1]) : siYmd(y, +m[1], +m[2]) }
   if (/[a-z]{3}/i.test(t)) { const d = new Date(t); return isNaN(d) ? null : siYmd(d.getFullYear(), d.getMonth() + 1, d.getDate()) }
@@ -186,16 +213,23 @@ const siType = (v) => { // an income / expense column -> 'income' | 'expense' | 
   return /transfer/.test(t) ? 'skip' : null
 }
 // Heuristic detection. Keys are tried against name patterns in priority order, and a key is only accepted when its values really look like that field.
+// Known schema (hard-coded): ts -> Date, id -> Note / reference, kind -> Category (or the income / expense type when its values say so), and the
+// Amount is any numeric value found anywhere in the record (keys are deep-flattened, so 'data.value.sum' is found too).
 function siDetect(keys, rows) {
   const sample = rows.slice(0, 200), used = new Set()
   const share = (k, f) => { let n = 0, g = 0; sample.forEach((r) => { const v = r[k]; if (v == null || v === '') return; n++; if (f(v)) g++ }); return n > 0 && g / n >= 0.6 }
   const pick = (pats, ok) => { for (const re of pats) { const k = keys.find((x) => !used.has(x) && re.test(x.toLowerCase()) && ok(x)); if (k) { used.add(k); return k } } return '' }
+  const isDt = (k) => share(k, (v) => siDate(v, 'mdy') !== null)
   const txt = (k) => share(k, (v) => typeof v === 'string' && siNum(v) === null && siDate(v, 'mdy') === null)
-  const amount = pick([/^amount$/, /amount/, /price/, /^val|value/, /cost/, /sum|total|debit|credit/], (k) => share(k, (v) => siNum(v) !== null))
-  const date = pick([/^date$/, /date/, /time|when|created|posted|^day$/], (k) => share(k, (v) => siDate(v, 'mdy') !== null))
-  const type = pick([/^type$/, /kind|direction|flow|credit|debit|(trans|txn).*type/], (k) => share(k, (v) => { const t = siType(v); return !!t && t !== 'skip' }) && new Set(sample.map((r) => r[k])).size <= 12)
-  const cat = pick([/cat/, /tag|group|label|class/], txt)
-  const note = pick([/desc/, /note|memo|remark|comment/, /name|title|merchant|payee|vendor|detail/], txt)
+  const date = pick([/^ts$/, /(^|\.)ts$/, /^date$/, /date/, /timestamp|time|when|created|posted|^day$|(^|\.)t$/], isDt)
+  let amount = pick([/^amount$/, /amount/, /price/, /^val|value/, /cost/, /(^|\.)amt$/, /sum|total|debit|credit/], (k) => share(k, (v) => siNum(v) !== null))
+  const type = pick([/^type$/, /(^|\.)kind$/, /kind|direction|flow|credit|debit|(trans|txn).*type/], (k) => share(k, (v) => { const t = siType(v); return !!t && t !== 'skip' }) && new Set(sample.map((r) => r[k])).size <= 12)
+  const cat = pick([/(^|\.)kind$/, /cat/, /tag|group|label|class/], txt)
+  const note = pick([/desc/, /note|memo|remark|comment/, /name|title|merchant|payee|vendor|detail/, /(^|\.)id$/, /ref|reference|_id$/], (k) => share(k, (v) => (typeof v === 'string' || typeof v === 'number') && siDate(v, 'mdy') === null))
+  if (!amount && date) { // last resort (only when a date was found, so junk files are still rejected): ANY real number in the record (not an id, a count or a timestamp)
+    const skip = /(^|\.)(id|ts|time|date|timestamp|created|updated|year|month|day|count|qty|index|idx|version|ver|code|seq|no|n)$/
+    amount = keys.find((k) => !used.has(k) && !skip.test(k.toLowerCase()) && share(k, (v) => typeof v === 'number' && isFinite(v) && siDate(v, 'mdy') === null)) || ''
+  }
   return { amount, date, note, cat, type }
 }
 // Builds the transactions for the current mapping. Returns what will be imported plus counts of what was left out and why.
@@ -219,69 +253,82 @@ function siBuild(rows, map, o) {
 }
 
 /* ---------- The sheet ---------- */
-// v9 P5 (zero-friction): ONE import button. The file is read, recognised and imported with no questions asked:
-//   - a Budgy backup is restored straight away (with an Undo toast that brings back what it replaced);
-//   - any other JSON list of transactions goes through the field auto-detection and into the first wallet (see siAuto).
-// The result is always a toast: success, or an error when nothing recognisable was found.
-function siAuto(S, text) { // -> { list, bad, dup, skip } or { error }
-  const sp = siParse(text); if (sp.error) return { error: sp.error }
-  if (sp.native) return { error: 'This Budgy backup has nothing in it to restore.' }
+// v9 P6: LOUD feedback. Nothing here can fail silently: every outcome is a toast AND a large alert inside the sheet.
+const siFail = (text, why) => { const k = siKeys(text); return 'Import Failed: ' + (why || 'Could not find amount or date values in this file.') + ' Detected keys: [' + (k.length ? k.join(', ') : 'none') + '].' }
+function siAuto(S, text) { // -> { list, bad, dup, skip, noDate } or { error }
+  const sp = siParse(text)
+  if (sp.error) return { error: siFail(text, sp.error === 'That file is not valid JSON.' ? sp.error : 'Could not find amount or date values in this file.') }
+  if (sp.native) return { error: 'Import Failed: this Budgy backup has nothing in it to restore.' }
   const map = siDetect(sp.keys, sp.rows)
-  if (!map.amount) return { error: 'No amount field was found in this file.' }
+  if (!map.amount) return { error: siFail(text) }
   const sample = sp.rows.slice(0, 200), neg = sample.some((r) => siNum(r[map.amount]) < 0)
   const res = siBuild(sp.rows, map, { order: 'auto', sign: !map.type && !neg ? 'expense' : 'auto', wallet: S.wallets[0].id, skipDup: true, existing: S.tx })
-  if (!res.list.length) return { error: res.dup ? 'Everything in this file is already in your transactions.' : 'No valid transactions were found in this file.' }
-  return res
+  if (!res.list.length) return { error: res.dup ? 'Import Failed: everything in this file is already in your transactions.' : siFail(text) }
+  return { ...res, noDate: !map.date }
 }
 
 function DataSheet({ onClose }) {
-  const { S, restoreData, addTxBatch, setToast } = useApp(), fileRef = useRef(null)
-  const [msg, setMsg] = useState(''), [ok, setOk] = useState(''), [busy, setBusy] = useState(false)
+  const { S, restoreData, addTxBatch, setToast, refreshState } = useApp(), fileRef = useRef(null), top = useRef(null)
+  const [msg, setMsg] = useState(''), [ok, setOk] = useState(''), [busy, setBusy] = useState(false), [res, setRes] = useState(null)
   const stamp = off(0), rows = useMemo(() => buildTxRows(S), [S])
+  useEffect(() => { if (res && top.current && top.current.scrollIntoView) top.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [res])
 
   const exportJson = () => { setMsg(''); saveFile('budgy-backup-' + stamp + '.json', JSON.stringify(buildBackup(S), null, 2), 'application/json;charset=utf-8'); setOk('Backup downloaded. Keep it somewhere safe.') }
   const exportCsv = () => { setMsg(''); saveFile('budgy-transactions-' + stamp + '.csv', csvOut([['Date', 'Type', 'Category', 'Note', 'Wallet', 'To wallet', 'Amount (PHP)', 'Status'], ...rows]), 'text/csv;charset=utf-8', true); setOk('Transactions CSV downloaded.') }
 
-  const fail = (sub) => { onClose(); setToast({ ok: false, msg: 'Import failed', sub }) }
+  const fail = (text) => { setRes({ ok: false, msg: '❌ ' + text }); setToast({ ok: false, msg: '❌ ' + text }) }
+  const win = (msg, sub) => { setRes({ ok: true, msg, sub }); refreshState() } // refreshState re-normalises the budget and forces every screen to re-render
   const handle = (text) => {
-    const bk = parseBackup(text)
-    if (!bk.error) { // Budgy backup: restore everything, profile included
-      restoreData({ ...bk.data, ...bk.profile }, { msg: 'Backup restored!', sub: bk.counts.wallets + ' wallets · ' + bk.counts.tx + ' transactions · ' + bk.counts.debts + ' payables & receivables · ' + bk.counts.goals + ' goals' })
-      return onClose()
+    text = String(text).replace(/^\uFEFF/, '')
+    const bk = parseBackup(text), real = bk.error ? 0 : bk.counts.wallets - (bk.defaultWallet ? 1 : 0) + bk.counts.tx + bk.counts.debts + bk.counts.goals
+    let isBudgy = false; try { const j = JSON.parse(text); isBudgy = !!(j && j.app === BACKUP_APP) } catch (e) {}
+    if (!bk.error && (isBudgy || real > 0)) { // a Budgy backup: restore everything, profile included
+      const sub = bk.counts.wallets + ' wallets · ' + bk.counts.tx + ' transactions · ' + bk.counts.debts + ' payables & receivables · ' + bk.counts.goals + ' goals'
+      restoreData({ ...bk.data, ...bk.profile }, { msg: '✅ Backup restored!', sub })
+      return win('✅ Backup restored!', sub + '. Your balances are updated.')
     }
     const r = siAuto(S, text)
     if (r.error) return fail(r.error)
-    addTxBatch(r.list) // raises the "Successfully imported X transactions!" toast (with Undo)
-    onClose()
+    const n = addTxBatch(r.list) // raises the success toast (with Undo)
+    const w = S.wallets[0].name, net = q(r.list.reduce((a, t) => a + (t.type === 'income' ? t.amount : -t.amount), 0))
+    win('✅ Successfully imported ' + n + ' transaction' + (n === 1 ? '' : 's') + '!', 'Added to ' + w + ' (net ' + (net < 0 ? '−' : '+') + php(Math.abs(net)) + ')' + (r.bad ? ' · ' + r.bad + ' unreadable row' + (r.bad === 1 ? '' : 's') + ' skipped' : '') + (r.dup ? ' · ' + r.dup + ' duplicate' + (r.dup === 1 ? '' : 's') + ' skipped' : '') + (r.noDate ? ' · no dates found, so today’s date was used' : '') + '.')
   }
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''
-    setMsg(''); setOk(''); if (!f) return
-    if (f.size > SI_MAX_BYTES) return fail('That file is too large to import.')
-    if (!/\.json$/i.test(f.name) && f.type !== 'application/json') return fail('Choose a .json file. (CSV files are export-only.)')
+    setMsg(''); setOk(''); setRes(null); if (!f) return
+    if (f.size > SI_MAX_BYTES) return fail('Import Failed: that file is too large to import.')
+    if (!/\.(json|jsonl|txt)$/i.test(f.name) && !/json|text/i.test(f.type || '')) return fail('Import Failed: choose a .json file. (CSV files are export-only.)')
     setBusy(true)
     const r = new FileReader()
-    r.onerror = () => { setBusy(false); fail('Could not read that file. Please try again.') }
-    r.onload = () => { setBusy(false); try { handle(String(r.result)) } catch (err) { fail('This file could not be imported.') } }
+    r.onerror = () => { setBusy(false); fail('Import Failed: could not read that file. Please try again.') }
+    r.onload = () => { setBusy(false); try { handle(String(r.result)) } catch (err) { fail('Import Failed: ' + ((err && err.message) || 'this file could not be imported.')) } }
     r.readAsText(f)
   }
 
   return (
     <Sheet title="Import / Export Data" onClose={onClose}>
       <div className="space-y-5">
+        <div ref={top} />
+        {res && (
+          <div role="alert" className={'rounded-2xl border-2 p-4 space-y-2 fade ' + (res.ok ? 'border-pos bg-pos/15' : 'border-neg bg-neg/15')}>
+            <div className={'text-base font-semibold leading-snug break-words ' + (res.ok ? 'text-pos' : 'text-neg')}>{res.msg}</div>
+            {res.sub && <div className="text-sm text-mu break-words">{res.sub}</div>}
+            <div className="flex gap-2 pt-1">{res.ok ? <button className="btn btn-p flex-1" onClick={onClose}>Done</button> : <><button className="btn flex-1" onClick={() => setRes(null)}>Dismiss</button><button className="btn btn-p flex-1" onClick={() => fileRef.current && fileRef.current.click()}>Try another file</button></>}</div>
+          </div>
+        )}
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Export</h3>
-          <button className="btn btn-p w-full !justify-start" onClick={exportJson}><Ic n="json" s={17} />Full backup (JSON)</button>
-          <p className="text-xs text-mu -mt-0.5 px-1">Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device.</p>
-          <button className="btn w-full !justify-start" onClick={exportCsv} disabled={!rows.length}><Ic n="dl" s={17} />Transactions (CSV)</button>
-          <p className="text-xs text-mu -mt-0.5 px-1">{rows.length} transaction{rows.length === 1 ? '' : 's'}, all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.</p>
+          <h3 className="text-sm font-semibold">Import</h3>
+          <input ref={fileRef} type="file" accept=".json,.jsonl,.txt,application/json,text/plain" className="hidden" onChange={onFile} aria-label="Choose a JSON file to import" />
+          <button className="btn btn-p w-full !justify-start" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}><Ic n="upl" s={17} />{busy ? 'Importing…' : 'Import data (JSON)'}</button>
+          <p className="text-xs text-mu px-1">Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically; the result is always shown here and as a message with Undo.</p>
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Import</h3>
-          <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} aria-label="Choose a JSON file to import" />
-          <button className="btn btn-p w-full !justify-start" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}><Ic n="upl" s={17} />{busy ? 'Importing…' : 'Import data (JSON)'}</button>
-          <p className="text-xs text-mu px-1">Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically, and a toast with Undo confirms the result.</p>
+          <h3 className="text-sm font-semibold">Export</h3>
+          <button className="btn w-full !justify-start" onClick={exportJson}><Ic n="json" s={17} />Full backup (JSON)</button>
+          <p className="text-xs text-mu -mt-0.5 px-1">Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device.</p>
+          <button className="btn w-full !justify-start" onClick={exportCsv} disabled={!rows.length}><Ic n="dl" s={17} />Transactions (CSV)</button>
+          <p className="text-xs text-mu -mt-0.5 px-1">{rows.length} transaction{rows.length === 1 ? '' : 's'}, all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.</p>
         </section>
 
         <Err m={msg} />

@@ -64,6 +64,7 @@ function parseBackup(text) {
     }
     wallets.push({ id: uid(w.id), name: str(w.name, 40), type: str(w.type, 20) || "Cash", balance: q(+w.balance), color: cleanColor(w.color) });
   });
+  const defaultWallet = !wallets.length;
   if (!wallets.length) wallets.push({ id: uid("w1"), name: "Cash on Hand", type: "Cash", balance: 0 });
   const wid = new Set(wallets.map((w) => w.id));
   const tx = [];
@@ -124,7 +125,7 @@ function parseBackup(text) {
   if (p.cardStats && typeof p.cardStats === "object") profile.cardStats = fixCard(p.cardStats);
   if (HOME_KEYS.includes(p.homePin)) profile.homePin = p.homePin;
   if (typeof p.showCashPie === "boolean") profile.showCashPie = p.showCashPie;
-  return { data: { wallets, tx, debts, goals, alloc, srcs }, profile, counts: { wallets: wallets.length, tx: tx.length, debts: debts.length, goals: goals.length }, skipped, at: wrapped && typeof raw.exportedAt === "string" ? raw.exportedAt.slice(0, 10) : "" };
+  return { defaultWallet, data: { wallets, tx, debts, goals, alloc, srcs }, profile, counts: { wallets: wallets.length, tx: tx.length, debts: debts.length, goals: goals.length }, skipped, at: wrapped && typeof raw.exportedAt === "string" ? raw.exportedAt.slice(0, 10) : "" };
 }
 const SI_MAX_ROWS = 2e4, SI_MAX_BYTES = 12 * 1024 * 1024;
 const siPad = (n) => (n < 10 ? "0" : "") + n;
@@ -133,45 +134,66 @@ const siYmd = (y, m, d) => {
   return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d && y >= 1990 && y <= 2100 ? y + "-" + siPad(m) + "-" + siPad(d) : null;
 };
 const siFlat = (o) => {
-  const r = {};
-  Object.keys(o).forEach((k) => {
-    const v = o[k];
-    if (v && typeof v === "object") {
-      if (!Array.isArray(v)) Object.keys(v).forEach((j) => {
-        const x = v[j];
-        if (x == null || typeof x !== "object") r[k + "." + j] = x;
-      });
-    } else r[k] = v;
-  });
+  const r = {}, walk = (v, p, d) => {
+    if (v == null || typeof v !== "object") {
+      if (p) r[p] = v;
+      return;
+    }
+    if (d >= 4 || Object.keys(r).length > 80) return;
+    if (Array.isArray(v)) {
+      if (v.length && v.length <= 8 && v.every((x) => x == null || typeof x !== "object")) v.forEach((x, i) => walk(x, p + "." + i, d + 1));
+      return;
+    }
+    Object.keys(v).forEach((k) => walk(v[k], p ? p + "." + k : k, d + 1));
+  };
+  walk(o, "", 0);
   return r;
 };
-const siObjs = (a) => Array.isArray(a) && a.length && a.filter((x) => x && typeof x === "object" && !Array.isArray(x)).length >= Math.ceil(a.length * 0.8) ? a.filter((x) => x && typeof x === "object" && !Array.isArray(x)) : null;
-const siFind = (raw) => {
+const siPlain = (x) => x && typeof x === "object" && !Array.isArray(x);
+const siObjs = (a) => Array.isArray(a) && a.length && a.filter(siPlain).length >= Math.ceil(a.length * 0.8) ? a.filter(siPlain) : null;
+const siFind = (raw, depth) => {
+  const d = depth || 0;
   if (Array.isArray(raw)) return siObjs(raw);
-  if (!raw || typeof raw !== "object") return null;
-  for (const k of Object.keys(raw)) {
-    const f = siObjs(raw[k]);
+  if (!siPlain(raw)) return null;
+  if (d < 3) for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    const f = Array.isArray(v) ? siObjs(v) : siPlain(v) ? siFind(v, d + 1) : null;
     if (f) return f;
   }
-  for (const k of Object.keys(raw)) {
-    const v = raw[k];
-    if (v && typeof v === "object" && !Array.isArray(v)) for (const j of Object.keys(v)) {
-      const f = siObjs(v[j]);
-      if (f) return f;
-    }
+  if (d === 0) {
+    const ks = Object.keys(raw), vals = ks.map((k) => raw[k]);
+    if (ks.length > 1 && vals.filter(siPlain).length >= Math.ceil(ks.length * 0.8)) return ks.filter((k) => siPlain(raw[k])).map((k) => ({ _key: k, ...raw[k] }));
+    if (ks.length) return [raw];
   }
   return null;
 };
+const siKeys = (text) => {
+  try {
+    const t = JSON.parse(String(text).replace(/^\uFEFF/, ""));
+    const o = Array.isArray(t) ? t.find(siPlain) : t;
+    return siPlain(o) ? Object.keys(o).slice(0, 3) : [];
+  } catch (e) {
+    const m = String(text).match(/"([^"\\]{1,30})"\s*:/g) || [];
+    return [...new Set(m.map((x) => x.replace(/"\s*:$/, "").slice(1)))].slice(0, 3);
+  }
+};
 function siParse(text) {
+  text = String(text).replace(/^\uFEFF/, "").trim();
   let raw;
   try {
     raw = JSON.parse(text);
   } catch (e) {
-    return { error: "That file is not valid JSON." };
+    const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    try {
+      raw = lines.length > 1 ? lines.map((x) => JSON.parse(x)) : null;
+    } catch (e2) {
+      raw = null;
+    }
+    if (!raw) return { error: "That file is not valid JSON." };
   }
   if (raw && typeof raw === "object" && !Array.isArray(raw) && raw.app === BACKUP_APP) return { native: true };
   const found = siFind(raw);
-  if (!found) return { error: 'No list of transactions was found. The file should be an array of objects, for example [{ "amount": 12.5, "date": "2024-03-01" }].' };
+  if (!found) return { error: "No list of transactions was found." };
   if (found.length > SI_MAX_ROWS) return { error: "This file has " + found.length + " rows. The limit is " + SI_MAX_ROWS + " per import; split the file and import it in parts." };
   const rows = found.map(siFlat), seen = /* @__PURE__ */ new Set(), keys = [];
   rows.slice(0, 300).forEach((r) => Object.keys(r).forEach((k) => {
@@ -215,12 +237,12 @@ const siDate = (v, order) => {
     const d = new Date(n);
     return isNaN(d) ? null : siYmd(d.getFullYear(), d.getMonth() + 1, d.getDate());
   };
-  if (typeof v === "number") return v >= 1e12 ? ep(v) : v >= 1e9 && v < 1e11 ? ep(v * 1e3) : null;
+  const num = (n) => n >= 1e17 ? ep(n / 1e6) : n >= 1e14 ? ep(n / 1e3) : n >= 1e11 ? ep(n) : n >= 1e9 ? ep(n * 1e3) : null;
+  if (typeof v === "number") return isFinite(v) ? num(v) : null;
   if (typeof v !== "string") return null;
   const t = v.trim();
   if (!t) return null;
-  if (/^\d{10}$/.test(t)) return ep(+t * 1e3);
-  if (/^\d{13}$/.test(t)) return ep(+t);
+  if (/^\d{9,19}(\.\d+)?$/.test(t)) return num(+t);
   let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   if (m) return siYmd(+m[1], +m[2], +m[3]);
   m = siSlash(t);
@@ -263,15 +285,20 @@ function siDetect(keys, rows) {
     }
     return "";
   };
+  const isDt = (k) => share(k, (v) => siDate(v, "mdy") !== null);
   const txt = (k) => share(k, (v) => typeof v === "string" && siNum(v) === null && siDate(v, "mdy") === null);
-  const amount = pick([/^amount$/, /amount/, /price/, /^val|value/, /cost/, /sum|total|debit|credit/], (k) => share(k, (v) => siNum(v) !== null));
-  const date = pick([/^date$/, /date/, /time|when|created|posted|^day$/], (k) => share(k, (v) => siDate(v, "mdy") !== null));
-  const type = pick([/^type$/, /kind|direction|flow|credit|debit|(trans|txn).*type/], (k) => share(k, (v) => {
+  const date = pick([/^ts$/, /(^|\.)ts$/, /^date$/, /date/, /timestamp|time|when|created|posted|^day$|(^|\.)t$/], isDt);
+  let amount = pick([/^amount$/, /amount/, /price/, /^val|value/, /cost/, /(^|\.)amt$/, /sum|total|debit|credit/], (k) => share(k, (v) => siNum(v) !== null));
+  const type = pick([/^type$/, /(^|\.)kind$/, /kind|direction|flow|credit|debit|(trans|txn).*type/], (k) => share(k, (v) => {
     const t = siType(v);
     return !!t && t !== "skip";
   }) && new Set(sample.map((r) => r[k])).size <= 12);
-  const cat = pick([/cat/, /tag|group|label|class/], txt);
-  const note = pick([/desc/, /note|memo|remark|comment/, /name|title|merchant|payee|vendor|detail/], txt);
+  const cat = pick([/(^|\.)kind$/, /cat/, /tag|group|label|class/], txt);
+  const note = pick([/desc/, /note|memo|remark|comment/, /name|title|merchant|payee|vendor|detail/, /(^|\.)id$/, /ref|reference|_id$/], (k) => share(k, (v) => (typeof v === "string" || typeof v === "number") && siDate(v, "mdy") === null));
+  if (!amount && date) {
+    const skip = /(^|\.)(id|ts|time|date|timestamp|created|updated|year|month|day|count|qty|index|idx|version|ver|code|seq|no|n)$/;
+    amount = keys.find((k) => !used.has(k) && !skip.test(k.toLowerCase()) && share(k, (v) => typeof v === "number" && isFinite(v) && siDate(v, "mdy") === null)) || "";
+  }
   return { amount, date, note, cat, type };
 }
 function siBuild(rows, map, o) {
@@ -295,21 +322,28 @@ function siBuild(rows, map, o) {
   });
   return out;
 }
+const siFail = (text, why) => {
+  const k = siKeys(text);
+  return "Import Failed: " + (why || "Could not find amount or date values in this file.") + " Detected keys: [" + (k.length ? k.join(", ") : "none") + "].";
+};
 function siAuto(S, text) {
   const sp = siParse(text);
-  if (sp.error) return { error: sp.error };
-  if (sp.native) return { error: "This Budgy backup has nothing in it to restore." };
+  if (sp.error) return { error: siFail(text, sp.error === "That file is not valid JSON." ? sp.error : "Could not find amount or date values in this file.") };
+  if (sp.native) return { error: "Import Failed: this Budgy backup has nothing in it to restore." };
   const map = siDetect(sp.keys, sp.rows);
-  if (!map.amount) return { error: "No amount field was found in this file." };
+  if (!map.amount) return { error: siFail(text) };
   const sample = sp.rows.slice(0, 200), neg = sample.some((r) => siNum(r[map.amount]) < 0);
   const res = siBuild(sp.rows, map, { order: "auto", sign: !map.type && !neg ? "expense" : "auto", wallet: S.wallets[0].id, skipDup: true, existing: S.tx });
-  if (!res.list.length) return { error: res.dup ? "Everything in this file is already in your transactions." : "No valid transactions were found in this file." };
-  return res;
+  if (!res.list.length) return { error: res.dup ? "Import Failed: everything in this file is already in your transactions." : siFail(text) };
+  return { ...res, noDate: !map.date };
 }
 function DataSheet({ onClose }) {
-  const { S, restoreData, addTxBatch, setToast } = useApp(), fileRef = useRef(null);
-  const [msg, setMsg] = useState(""), [ok, setOk] = useState(""), [busy, setBusy] = useState(false);
+  const { S, restoreData, addTxBatch, setToast, refreshState } = useApp(), fileRef = useRef(null), top = useRef(null);
+  const [msg, setMsg] = useState(""), [ok, setOk] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState(null);
   const stamp = off(0), rows = useMemo(() => buildTxRows(S), [S]);
+  useEffect(() => {
+    if (res && top.current && top.current.scrollIntoView) top.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [res]);
   const exportJson = () => {
     setMsg("");
     saveFile("budgy-backup-" + stamp + ".json", JSON.stringify(buildBackup(S), null, 2), "application/json;charset=utf-8");
@@ -320,44 +354,58 @@ function DataSheet({ onClose }) {
     saveFile("budgy-transactions-" + stamp + ".csv", csvOut([["Date", "Type", "Category", "Note", "Wallet", "To wallet", "Amount (PHP)", "Status"], ...rows]), "text/csv;charset=utf-8", true);
     setOk("Transactions CSV downloaded.");
   };
-  const fail = (sub) => {
-    onClose();
-    setToast({ ok: false, msg: "Import failed", sub });
+  const fail = (text) => {
+    setRes({ ok: false, msg: "❌ " + text });
+    setToast({ ok: false, msg: "❌ " + text });
+  };
+  const win = (msg2, sub) => {
+    setRes({ ok: true, msg: msg2, sub });
+    refreshState();
   };
   const handle = (text) => {
-    const bk = parseBackup(text);
-    if (!bk.error) {
-      restoreData({ ...bk.data, ...bk.profile }, { msg: "Backup restored!", sub: bk.counts.wallets + " wallets · " + bk.counts.tx + " transactions · " + bk.counts.debts + " payables & receivables · " + bk.counts.goals + " goals" });
-      return onClose();
+    text = String(text).replace(/^\uFEFF/, "");
+    const bk = parseBackup(text), real = bk.error ? 0 : bk.counts.wallets - (bk.defaultWallet ? 1 : 0) + bk.counts.tx + bk.counts.debts + bk.counts.goals;
+    let isBudgy = false;
+    try {
+      const j = JSON.parse(text);
+      isBudgy = !!(j && j.app === BACKUP_APP);
+    } catch (e) {
+    }
+    if (!bk.error && (isBudgy || real > 0)) {
+      const sub = bk.counts.wallets + " wallets · " + bk.counts.tx + " transactions · " + bk.counts.debts + " payables & receivables · " + bk.counts.goals + " goals";
+      restoreData({ ...bk.data, ...bk.profile }, { msg: "✅ Backup restored!", sub });
+      return win("✅ Backup restored!", sub + ". Your balances are updated.");
     }
     const r = siAuto(S, text);
     if (r.error) return fail(r.error);
-    addTxBatch(r.list);
-    onClose();
+    const n = addTxBatch(r.list);
+    const w = S.wallets[0].name, net = q(r.list.reduce((a, t) => a + (t.type === "income" ? t.amount : -t.amount), 0));
+    win("✅ Successfully imported " + n + " transaction" + (n === 1 ? "" : "s") + "!", "Added to " + w + " (net " + (net < 0 ? "−" : "+") + php(Math.abs(net)) + ")" + (r.bad ? " · " + r.bad + " unreadable row" + (r.bad === 1 ? "" : "s") + " skipped" : "") + (r.dup ? " · " + r.dup + " duplicate" + (r.dup === 1 ? "" : "s") + " skipped" : "") + (r.noDate ? " · no dates found, so today’s date was used" : "") + ".");
   };
   const onFile = (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     setMsg("");
     setOk("");
+    setRes(null);
     if (!f) return;
-    if (f.size > SI_MAX_BYTES) return fail("That file is too large to import.");
-    if (!/\.json$/i.test(f.name) && f.type !== "application/json") return fail("Choose a .json file. (CSV files are export-only.)");
+    if (f.size > SI_MAX_BYTES) return fail("Import Failed: that file is too large to import.");
+    if (!/\.(json|jsonl|txt)$/i.test(f.name) && !/json|text/i.test(f.type || "")) return fail("Import Failed: choose a .json file. (CSV files are export-only.)");
     setBusy(true);
     const r = new FileReader();
     r.onerror = () => {
       setBusy(false);
-      fail("Could not read that file. Please try again.");
+      fail("Import Failed: could not read that file. Please try again.");
     };
     r.onload = () => {
       setBusy(false);
       try {
         handle(String(r.result));
       } catch (err) {
-        fail("This file could not be imported.");
+        fail("Import Failed: " + (err && err.message || "this file could not be imported."));
       }
     };
     r.readAsText(f);
   };
-  return /* @__PURE__ */ React.createElement(Sheet, { title: "Import / Export Data", onClose }, /* @__PURE__ */ React.createElement("div", { className: "space-y-5" }, /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Export"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: exportJson }, /* @__PURE__ */ React.createElement(Ic, { n: "json", s: 17 }), "Full backup (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, "Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device."), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: exportCsv, disabled: !rows.length }, /* @__PURE__ */ React.createElement(Ic, { n: "dl", s: 17 }), "Transactions (CSV)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, rows.length, " transaction", rows.length === 1 ? "" : "s", ", all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.")), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Import"), /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".json,application/json", className: "hidden", onChange: onFile, "aria-label": "Choose a JSON file to import" }), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy }, /* @__PURE__ */ React.createElement(Ic, { n: "upl", s: 17 }), busy ? "Importing…" : "Import data (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu px-1" }, "Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically, and a toast with Undo confirms the result.")), /* @__PURE__ */ React.createElement(Err, { m: msg }), ok && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-pos flex gap-2", role: "status" }, /* @__PURE__ */ React.createElement(Ic, { n: "check", s: 18, cls: "shrink-0 mt-0.5" }), ok)));
+  return /* @__PURE__ */ React.createElement(Sheet, { title: "Import / Export Data", onClose }, /* @__PURE__ */ React.createElement("div", { className: "space-y-5" }, /* @__PURE__ */ React.createElement("div", { ref: top }), res && /* @__PURE__ */ React.createElement("div", { role: "alert", className: "rounded-2xl border-2 p-4 space-y-2 fade " + (res.ok ? "border-pos bg-pos/15" : "border-neg bg-neg/15") }, /* @__PURE__ */ React.createElement("div", { className: "text-base font-semibold leading-snug break-words " + (res.ok ? "text-pos" : "text-neg") }, res.msg), res.sub && /* @__PURE__ */ React.createElement("div", { className: "text-sm text-mu break-words" }, res.sub), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 pt-1" }, res.ok ? /* @__PURE__ */ React.createElement("button", { className: "btn btn-p flex-1", onClick: onClose }, "Done") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("button", { className: "btn flex-1", onClick: () => setRes(null) }, "Dismiss"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p flex-1", onClick: () => fileRef.current && fileRef.current.click() }, "Try another file")))), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Import"), /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".json,.jsonl,.txt,application/json,text/plain", className: "hidden", onChange: onFile, "aria-label": "Choose a JSON file to import" }), /* @__PURE__ */ React.createElement("button", { className: "btn btn-p w-full !justify-start", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy }, /* @__PURE__ */ React.createElement(Ic, { n: "upl", s: 17 }), busy ? "Importing…" : "Import data (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu px-1" }, "Choose a Budgy backup to restore it, or a transaction export from another app to add its transactions to your first wallet. It is recognised and imported automatically; the result is always shown here and as a message with Undo.")), /* @__PURE__ */ React.createElement("section", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("h3", { className: "text-sm font-semibold" }, "Export"), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: exportJson }, /* @__PURE__ */ React.createElement(Ic, { n: "json", s: 17 }), "Full backup (JSON)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, "Everything: wallets, transactions, payables, receivables, goals, allocations, name and appearance. Use it to restore or move to another device."), /* @__PURE__ */ React.createElement("button", { className: "btn w-full !justify-start", onClick: exportCsv, disabled: !rows.length }, /* @__PURE__ */ React.createElement(Ic, { n: "dl", s: 17 }), "Transactions (CSV)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-mu -mt-0.5 px-1" }, rows.length, " transaction", rows.length === 1 ? "" : "s", ", all time, including payments on payables and receivables. Opens in Excel, Numbers and Google Sheets.")), /* @__PURE__ */ React.createElement(Err, { m: msg }), ok && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-pos flex gap-2", role: "status" }, /* @__PURE__ */ React.createElement(Ic, { n: "check", s: 18, cls: "shrink-0 mt-0.5" }), ok)));
 }
