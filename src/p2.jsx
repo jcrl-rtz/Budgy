@@ -197,9 +197,9 @@ function DebtSheet({ kind, item, preset, fill, lock, onClose }) {
 }
 
 // Add a source (a group such as "Credit Card" or "Mom") or rename one. A source is either a payable source (money you owe) or a receivable source (money owed to you).
-function SourceSheet({ item, onClose }) {
+function SourceSheet({ item, kind: k0, onClose }) {
   const { S, addSrc, renameSrc } = useApp()
-  const [name, setName] = useState(item ? item.name : ''), [kind, setKind] = useState(item ? item.kind : 'payable'), [m, setM] = useState('')
+  const [name, setName] = useState(item ? item.name : ''), [kind, setKind] = useState(item ? item.kind : k0 || 'payable'), [m, setM] = useState('')
   const save = () => {
     const n = name.trim()
     if (!n) return setM('Name the source.')
@@ -253,21 +253,24 @@ function PaySheet({ item, onClose }) {
 }
 
 /* v8 P1: lock money from one or more wallets for a single payable. Nothing leaves the wallet; the locked total just comes out of Spendable. */
-function AllocSheet({ item, onClose }) {
-  const { S, c, setAllocations } = useApp(), d = S.debts.find((x) => x.id === item.id) || item
+function AllocSheet({ item, ask, onClose }) {
+  const { S, c, setAllocations, clearAllocation } = useApp(), d = S.debts.find((x) => x.id === item.id) || item
   const left = Math.max(0, rem(d)), cur = Object.fromEntries((d.allocations || []).map((x) => [x.walletId, x.amount]))
   const [v, setV] = useState(() => Object.fromEntries(S.wallets.map((w) => [w.id, cur[w.id] ? String(cur[w.id]) : ''])))
-  const [m, setM] = useState('')
+  const [m, setM] = useState(''), [conf, setConf] = useState(!!ask)
+  const plan = Math.min((S.alloc || {})['d:' + d.id] || 0, Math.max(0, q(rem(d) - lockOf(d)))), mine = lockOf(d)
   // What a wallet can still lock: its balance minus what OTHER payables already locked in it (this payable's own lock is being edited).
   const avail = (w) => Math.max(0, q(c.bal[w.id] - (c.lockW[w.id] || 0) + (cur[w.id] || 0)))
   const num = (w) => (String(v[w.id]).trim() === '' ? 0 : money(v[w.id]) ? q(+v[w.id]) : NaN)
   const nums = S.wallets.map(num), bad = nums.some((n) => Number.isNaN(n)), total = q(nums.reduce((a, n) => a + (n || 0), 0)), had = (d.allocations || []).length > 0
+  const moveAll = (id) => { const t = Math.min(left, total || mine || left, avail(S.wallets.find((w) => w.id === id))); setV(Object.fromEntries(S.wallets.map((w) => [w.id, w.id === id && t > 0 ? String(t) : '']))); setM('') }
   const set = (id, x) => { setV({ ...v, [id]: x }); setM('') }
   const fill = (w) => { const others = q(S.wallets.reduce((a, o) => a + (o.id === w.id ? 0 : num(o) || 0), 0)); set(w.id, String(Math.max(0, Math.min(avail(w), q(left - others))) || '')) }
   const save = () => {
     if (bad) return setM('Use amounts with at most two decimals, or leave a wallet empty.')
     const over = S.wallets.find((w, i) => nums[i] > avail(w)); if (over) return setM(over.name + ' only has ' + php(avail(over)) + ' free to lock.')
     if (total > left) return setM('That’s more than the remaining ' + php(left) + ' for this payable.')
+    if (q(total - mine) > Math.max(0, c.spendable)) return setM('Only ' + php(Math.max(0, c.spendable)) + ' of your Spendable balance is free to lock more.')
     setAllocations(d.id, S.wallets.map((w, i) => ({ walletId: w.id, amount: nums[i] })).filter((x) => x.amount > 0)); onClose()
   }
   return (
@@ -279,6 +282,7 @@ function AllocSheet({ item, onClose }) {
           <div className={'text-xs tabular-nums ' + (total > left ? 'text-neg' : 'text-mu')}>{php(total)} / {php(left)} allocated</div>
         </div>
         <p className="text-xs text-mu">Locked money stays in its wallet until you pay, but it is taken out of your Spendable balance.</p>
+        {S.wallets.length > 1 && <Field label="Switch source wallet" hint="Moves the whole locked amount into one wallet (up to what it has free)."><select className="field" value="" onChange={(e) => e.target.value && moveAll(e.target.value)}><option value="">Move allocation to…</option>{S.wallets.map((w) => <option key={w.id} value={w.id}>{w.name} · free {php(avail(w))}</option>)}</select></Field>}
         <div className="space-y-2.5">
           {S.wallets.map((w) => (
             <div key={w.id} className="glass-tile p-3">
@@ -293,8 +297,10 @@ function AllocSheet({ item, onClose }) {
         </div>
         <Err m={m} />
         <button type="submit" className="btn btn-p w-full"><Ic n="lock" s={16} />{had ? 'Save allocation' : 'Lock funds'}</button>
-        {had && <button type="button" className="btn w-full text-neg" onClick={() => { setAllocations(d.id, []); onClose() }}>Remove allocation</button>}
       </form>
+      {(had || plan > 0) && (conf
+        ? <div className="mt-3 glass-tile p-3 space-y-2.5" role="alert"><p className="text-[13px] leading-snug text-neg">Unlock the {php(q(mine + plan))} set aside for “{d.party}”? It goes back to your Spendable balance. Wallet balances don’t change.</p><div className="flex gap-2"><button type="button" className="btn flex-1" onClick={() => setConf(false)}>Cancel</button><button type="button" className="btn flex-1 !bg-neg !text-white" onClick={() => { clearAllocation(d.id); onClose() }}>Yes, remove</button></div></div>
+        : <button type="button" className="btn w-full mt-3 text-neg" onClick={() => setConf(true)}>Remove allocation</button>)}
     </Sheet>
   )
 }
@@ -394,9 +400,9 @@ function ReportSheet({ onClose }) {
 function P2Sheets({ sheet: s, onClose }) {
   if (s.k === 'tx') return <TxSheet kind={s.kind} preset={s.preset} item={s.item} onClose={onClose} />
   if (s.k === 'debt') return <DebtSheet kind={s.kind} item={s.item} preset={s.preset} fill={s.fill} lock={s.lock} onClose={onClose} />
-  if (s.k === 'source') return <SourceSheet item={s.item} onClose={onClose} />
+  if (s.k === 'source') return <SourceSheet item={s.item} kind={s.kind} onClose={onClose} />
   if (s.k === 'pay') return <PaySheet item={s.item} onClose={onClose} />
-  if (s.k === 'alloc') return <AllocSheet item={s.item} onClose={onClose} />
+  if (s.k === 'alloc') return <AllocSheet item={s.item} ask={s.ask} onClose={onClose} />
   if (s.k === 'goal') return <GoalSheet item={s.item} onClose={onClose} />
   if (s.k === 'gmoney') return <MoneySheet item={s.item} onClose={onClose} />
   if (s.k === 'report') return <ReportSheet onClose={onClose} />
@@ -418,7 +424,7 @@ function QuickAddSheet({ onClose, openSheet }) {
 // v7: edit and delete live in the standard (...) options menu on every payable / receivable (see OptionsMenu in ui.js).
 const UndoBtn = ({ onClick, label }) => <button type="button" className="btn !py-1 !px-2 !text-[11px] shrink-0" aria-label={label} title="Reverse this entry and restore the balance" onClick={onClick}><Ic n="undo" s={12} />Undo</button>
 function DebtRow({ d, openSheet }) {
-  const { S, delDebt, undoPay, setAllocations } = useApp(), [h, setH] = useState(false)
+  const { S, delDebt, undoPay, clearAllocation } = useApp(), [h, setH] = useState(false)
   const pay = d.kind === 'payable', r = rem(d), lk = lockOf(d), ask = needsAmt(d), done = r <= 0 && !ask, late = !done && d.due < off(0), W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
   return (
     <div className="glass-tile p-3.5 space-y-3">
@@ -432,6 +438,7 @@ function DebtRow({ d, openSheet }) {
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs"><span className={'inline-flex items-center gap-1 font-medium ' + (lk >= r ? 'text-pos' : 'text-ac')}><Ic n="lock" s={12} />{php(lk)} / {php(r)} Allocated</span><span className="text-mu">{lk >= r ? 'Fully locked' : php(q(r - lk)) + ' unlocked'}</span></div>
           <Bar gray pct={(lk / r) * 100} />
           <div className="text-[11px] text-mu break-words leading-snug">{(d.allocations || []).filter((x) => W[x.walletId]).map((x) => W[x.walletId] + ' ' + php(x.amount)).join(' · ')}</div>
+          <div className="flex gap-2 pt-0.5"><button type="button" className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => openSheet({ k: 'alloc', item: d })}><Ic n="pen" s={12} />Edit allocation</button><button type="button" className="btn !py-1 !px-2.5 !text-[11px] text-neg" onClick={() => openSheet({ k: 'alloc', item: d, ask: true })}>Remove</button></div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -441,7 +448,7 @@ function DebtRow({ d, openSheet }) {
         <span className="ml-auto"><OptionsMenu label={'Options for ' + d.party} items={[
           { label: 'Edit', icon: 'pen', onClick: () => openSheet({ k: 'debt', kind: d.kind, item: d }) },
           ...(pay && !done && !ask ? [{ label: lk > 0 ? 'Edit Allocation' : 'Allocate Funds', icon: 'lock', onClick: () => openSheet({ k: 'alloc', item: d }) }] : []),
-          ...(pay && lk > 0 ? [{ label: 'Remove Allocation', icon: 'trash', onClick: () => setAllocations(d.id, []), confirm: { warn: 'Unlock the ' + php(lk) + ' set aside for “' + d.party + '”? It goes back to your Spendable balance.', yes: 'Yes, remove' } }] : []),
+          ...(pay && (lk > 0 || (S.alloc || {})['d:' + d.id] > 0) ? [{ label: 'Remove Allocation', icon: 'trash', onClick: () => clearAllocation(d.id), confirm: { warn: 'Unlock the ' + php(q(lk + Math.min((S.alloc || {})['d:' + d.id] || 0, Math.max(0, q(r - lk))))) + ' set aside for “' + d.party + '”? It goes back to your Spendable balance.', yes: 'Yes, remove' } }] : []),
           { label: 'Delete', icon: 'trash', danger: true, onClick: () => delDebt(d.id), confirm: { warn: 'Delete “' + d.party + '”? ' + ((d.payments || []).length ? 'Its payment history is deleted too and those payments go back to your wallets. ' : '') + 'This can’t be undone.', yes: 'Yes, delete' } }
         ]} /></span>
       </div>
@@ -483,9 +490,9 @@ function DueItem({ d, openSheet }) {
   )
 }
 
-function DueSummary({ openSheet }) {
+function DueSummary({ openSheet, kind }) {
   const { S } = useApp(), [open, setOpen] = useState({}), [all, setAll] = useState(true)
-  const act = S.debts.filter((d) => rem(d) > 0 && !needsAmt(d) && d.due)
+  const act = S.debts.filter((d) => d.kind === kind && rem(d) > 0 && !needsAmt(d) && d.due)
   const dates = [...new Set(act.map((d) => d.due))].sort()
   const groups = dates.map((date) => {
     const items = act.filter((d) => d.due === date).sort((a, b) => (a.kind === b.kind ? a.party.localeCompare(b.party) : a.kind === 'payable' ? -1 : 1))
@@ -499,7 +506,7 @@ function DueSummary({ openSheet }) {
   return (
     <Glass className="p-4 sm:p-5">
       <button className="w-full flex items-center justify-between gap-3 text-left" aria-expanded={all} onClick={() => setAll(!all)}>
-        <span className="min-w-0"><span className="block font-semibold">Due Date Summary</span><span className="block text-xs text-mu">{groups.length} date{groups.length === 1 ? '' : 's'} · to pay {php(totPay)} · to receive {php(totRec)}</span></span>
+        <span className="min-w-0"><span className="block font-semibold">Due Date Summary</span><span className="block text-xs text-mu">{groups.length} date{groups.length === 1 ? '' : 's'} · {kind === 'payable' ? 'to pay ' + php(totPay) : 'to receive ' + php(totRec)}</span></span>
         <Ic n="chev" s={18} cls={'text-mu shrink-0 transition-transform ' + (all ? 'rotate-180' : '')} />
       </button>
       {all && (
@@ -537,30 +544,39 @@ function DueSummary({ openSheet }) {
 // (Edit name, Delete) and its own "Add payable / Add receivable" button. New sources are added from the button at the top.
 function Pending({ openSheet }) {
   const { S, c, delSrc, undoPay } = useApp()
-  const [open, setOpen] = useState({})
+  const [open, setOpen] = useState({}), [tab, setTab] = useState('payable')
+  const isPay = tab === 'payable'
   const list = (S.srcs || []).map((x) => ({ kind: x.kind, name: x.name }))
   S.debts.forEach((d) => { if (!list.some((x) => x.kind === d.kind && x.name === d.cat)) list.push({ kind: d.kind, name: d.cat }) }) // items whose source was never listed still show
-  const groups = list.map((x) => ({ ...x, key: x.kind + '|' + x.name, items: S.debts.filter((d) => d.kind === x.kind && d.cat === x.name).sort((a, b) => (rem(a) <= 0) - (rem(b) <= 0) || a.due.localeCompare(b.due)) }))
+  const groups = list.filter((x) => x.kind === tab).map((x) => ({ ...x, key: x.kind + '|' + x.name, items: S.debts.filter((d) => d.kind === x.kind && d.cat === x.name).sort((a, b) => (rem(a) <= 0) - (rem(b) <= 0) || a.due.localeCompare(b.due)) }))
   const isOpen = (k) => open[k] !== false // sources start expanded so every item is visible
   const allOpen = groups.length > 0 && groups.every((g) => isOpen(g.key))
-  const late = S.debts.filter((d) => rem(d) > 0 && d.due < off(0)).length
+  const late = S.debts.filter((d) => d.kind === tab && rem(d) > 0 && d.due < off(0)).length
+  const openN = (k) => S.debts.filter((d) => d.kind === k && rem(d) > 0).length
   const W = Object.fromEntries(S.wallets.map((w) => [w.id, w.name]))
-  const hist = S.debts.flatMap((d) => (d.payments || []).map((p) => ({ d, p }))).sort((a, b) => b.p.date.localeCompare(a.p.date)).slice(0, 25)
+  const hist = S.debts.filter((d) => d.kind === tab).flatMap((d) => (d.payments || []).map((p) => ({ d, p }))).sort((a, b) => b.p.date.localeCompare(a.p.date)).slice(0, 25)
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <Tile l="Total payables" v={php(c.pay)} tone={c.pay > 0 ? 'text-neg' : ''} /><Tile l="Total receivables" v={php(c.rec)} tone={c.rec > 0 ? 'text-pos' : ''} />
+      <div className="glass-tile p-1 grid grid-cols-2 gap-1" role="tablist" aria-label="Payables or receivables" data-noswipe>
+        {[['payable', 'Payables'], ['receivable', 'Receivables']].map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={'btn !border-transparent !gap-2 ' + (tab === k ? 'btn-p' : '!bg-transparent')}>
+            {l}<span className={'min-w-[20px] rounded-full px-1.5 text-[11px] font-semibold tabular-nums ' + (tab === k ? 'bg-white/25' : 'bg-fg/10 text-mu')}>{openN(k)}</span>
+          </button>
+        ))}
       </div>
-      <DueSummary openSheet={openSheet} />
+      <div className="fade" key={tab + '-sum'}>
+        <Tile l={isPay ? 'Total payables' : 'Total receivables'} v={php(isPay ? c.pay : c.rec)} tone={isPay ? (c.pay > 0 ? 'text-neg' : '') : c.rec > 0 ? 'text-pos' : ''} />
+      </div>
+      <DueSummary key={tab} kind={tab} openSheet={openSheet} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-mu">{late ? <span className="text-neg">{late} overdue</span> : 'Nothing overdue'}</span>
         <div className="flex gap-2">
           {groups.length > 0 && <button className="btn !py-1.5 !text-xs" onClick={() => setOpen({ ...open, ...Object.fromEntries(groups.map((g) => [g.key, !allOpen])) })}>{allOpen ? 'Collapse all' : 'Expand all'}</button>}
-          <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'source', item: null })}><Ic n="plus" s={14} />Add Source</button>
+          <button className="btn btn-p !py-1.5 !text-xs" onClick={() => openSheet({ k: 'source', item: null, kind: tab })}><Ic n="plus" s={14} />Add Source</button>
         </div>
       </div>
-      {!groups.length && <Empty t="No sources yet. Tap “Add Source” (for example a credit card or a person), then add payables or receivables inside it." />}
-      <div className="space-y-3">
+      {!groups.length && <Empty t={isPay ? 'No payable sources yet. Tap “Add Source” (for example a credit card or a loan), then add payables inside it.' : 'No receivable sources yet. Tap “Add Source” (for example a person or an employer), then add receivables inside it.'} />}
+      <div className="space-y-3" key={tab + '-list'}>
         {groups.map((g) => {
           const on = isOpen(g.key), pay = g.kind === 'payable', t = q(g.items.reduce((a, d) => a + Math.max(0, rem(d)), 0))
           return (
@@ -587,7 +603,7 @@ function Pending({ openSheet }) {
         })}
       </div>
       {hist.length > 0 && (
-        <Fold title="Payment history" right={<span>{hist.length} latest</span>}>
+        <Fold title={isPay ? 'Payment history' : 'Receipt history'} right={<span>{hist.length} latest</span>}>
           <div className="space-y-2">
             {hist.map(({ d, p }) => {
               const pay = d.kind === 'payable'

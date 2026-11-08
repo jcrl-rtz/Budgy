@@ -1,3 +1,25 @@
+# Budgy v9 Phase 5: Data Portability (Export + Smart Import)
+
+- **Native backup (Settings > Import / Export Data).** "Full backup (JSON)" downloads `budgy-backup-YYYY-MM-DD.json` with wallets, transactions, payables / receivables (with payment history), wallet allocations, Smart Plan allocations, sources, goals and profile. "Restore from backup" validates the file, shows what it contains, then replaces the data. Checked with a round trip: wallet balances, Spendable and Liquid are identical after restore.
+- **Smart Importer for other apps' JSON.** "Smart import transactions (JSON)" accepts an array of objects (or an object holding one, e.g. `{ "transactions": [...] }`). It auto-detects Amount (amount / price / val / cost), Date (date / time), Note (desc / note / name) and Category (cat), plus an optional income / expense column.
+- **Map your data sheet.** Shows the first row of the file, one dropdown per field ("Map 'cost' → Amount · e.g. -12.50"), how amounts are read (signed, all expenses, all income, reversed), date format when dates like 05/03/2024 appear, the wallet to import into, and a duplicate-skip option. A live preview shows income, expenses, net, skipped rows and the first three results. Nothing is saved until Import is tapped.
+- **Parsing.** Numbers like "₱1,234.50", "(45.00)", "45.00-" and "1.234,50"; dates as ISO, "YYYY-MM-DD HH:mm", DD/MM or MM/DD, "Mar 5, 2024" and epoch seconds / milliseconds. Up to 20,000 rows per import. Transfers and invalid rows are skipped and counted.
+- **Undo.** New `addTxBatch` in core.jsx adds all rows in one update with a single Undo toast (Redo supported).
+- Choosing a non-Budgy file under "Restore from backup" now opens it in the Smart Importer instead of showing an error; choosing a Budgy backup under Smart import points you to Restore.
+- `sw.js` VERSION is `budgy-v9-p5`; script query strings are `?v=v9p5`.
+- Files changed: src/core.jsx, src/io.jsx and compiled core.js, io.js, plus index.html, sw.js, README.md (other compiled files rebuilt unchanged).
+
+---
+
+# Budgy v9 Phase 3: Payables | Receivables tabs, allocation controls
+
+- **Pending tab toggle.** A segmented control at the top of Pending switches between Payables and Receivables (with open-item counts). Each side shows only its own total, Due Date Summary, sources, list and history. Add Source opens on the active side.
+- **Allocation Edit / Remove.** On an allocated payable: Edit allocation and Remove buttons on the card, plus Edit / Remove in the ... menu. The allocation sheet can change amounts per wallet, switch the source wallet (Move allocation to...), and Remove (two-step confirm). Increasing a lock is refused if it would push Spendable below zero.
+- **Remove = full unlock.** New `clearAllocation(id)` in core.jsx deletes the wallet locks and the Smart Plan reserve for that payable. Balances are derived by calc(), so only Spendable changes; wallet balances and payments are untouched.
+- Files changed: src/core.jsx, src/p2.jsx and compiled core.js, p2.js, index.html, sw.js (`budgy-v9-p3`), README.md.
+
+---
+
 # Budgy v9 Phase 2: Undo / Redo for transactions
 
 ## What changed

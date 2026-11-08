@@ -642,6 +642,15 @@ function Provider({ children }) {
       if (o !== false) offer({ title: o && o.title || t.type[0].toUpperCase() + t.type.slice(1) + " saved", sub: o && o.sub || txSub(R.S, t), fwd: (s) => txPut(s, t, 0), back: (s) => txDrop(s, id), chkF: t, chkB: null });
       return id;
     },
+    // v9 P5: add many transactions at once (Smart Importer). One state update and ONE Undo toast that removes the whole batch; Redo puts it back.
+    addTxBatch: (list) => {
+      const ts = list.map((x) => ({ id: nid(), ...x }));
+      if (!ts.length) return 0;
+      const ids = new Set(ts.map((t) => t.id)), fwd = (s) => ({ ...s, tx: [...ts.filter((t) => !s.tx.some((x) => x.id === t.id)), ...s.tx] }), back = (s) => ({ ...s, tx: s.tx.filter((t) => !ids.has(t.id)) });
+      setS(fwd);
+      offer({ title: ts.length + " transaction" + (ts.length === 1 ? "" : "s") + " imported", sub: "Tap Undo to remove them all", fwd, back, chkF: ts[0], chkB: null });
+      return ts.length;
+    },
     delTx: (id, o) => {
       const at = R.S.tx.findIndex((t2) => t2.id === id);
       if (at < 0) return;
@@ -701,6 +710,16 @@ function Provider({ children }) {
         if (d.id !== id || d.kind !== "payable") return d;
         const { allocations, ...r } = d;
         return a.length ? { ...r, allocations: a } : r;
+      }) };
+    }),
+    // Remove the whole allocation of one payable: its wallet locks AND any Smart Plan reserve go back to Spendable. Wallet balances and payments are never touched.
+    clearAllocation: (id) => setS((s) => {
+      const al = { ...s.alloc };
+      delete al["d:" + id];
+      return { ...s, alloc: al, debts: s.debts.map((d) => {
+        if (d.id !== id || d.kind !== "payable" || !d.allocations) return d;
+        const { allocations, ...r } = d;
+        return r;
       }) };
     }),
     // Undo a recorded payment / receipt: the entry is removed (the wallet gets its money back or gives it up again) and the remaining balance is restored.
