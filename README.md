@@ -1,3 +1,15 @@
+# Budgy v9 Phase 8: large-screen layout + Allocate from the Allocate tab
+
+- **Top section on md+ (iPad / Mac).** The Net worth card and the right-hand column now form one balanced block: the card on the left (1.3fr on tablets, 34rem on lg+), and a right column of the same height holding the Statement (stretches to fill, with Cash / Receivables / Payables amounts under the bar) and the Expense / Income / Transfer buttons underneath. No more floating Statement card or empty gap. On phones nothing changes (card, Statement, then the buttons).
+- **Summary tiles** are four across from md (was lg), so the portrait iPad no longer shows two tall columns.
+- **Content width.** The page header and content are centred in a 1100px column, so very wide screens stay compact instead of stretching.
+- **Allocate tab.** New "Allocate to Payable" button (opens the payable picker, or goes straight to the sheet when there is one payable) and a "Lock funds" / "Edit lock" button on every payable row. Both open the same Allocate Funds sheet as Pending, with the same Edit / Remove / source-wallet controls and Spendable math.
+- Spacing pass: tighter gaps and padding between sections from md.
+- `sw.js` VERSION is `budgy-v9-p8`; script query strings are `?v=v9p8`.
+- Files changed: src/pages.jsx, src/p2.jsx, src/app.jsx and compiled pages.js, p2.js, app.js, plus index.html, sw.js, README.md.
+
+---
+
 # Budgy v9 Phase 7: import can no longer fail silently
 
 - **Loud feedback, always.** Every import now ends in BOTH a toast and a large alert at the top of the Import / Export sheet (which stays open until you tap Done). Success: "✅ Successfully imported X transactions!" (or "✅ Backup restored!") with the wallet, the net amount and any skipped rows. Failure: "❌ Import Failed: Could not find amount or date values in this file. Detected keys: [first 3 keys]." Other failures (not JSON, too large, wrong file type, nothing new) are also shown the same way.

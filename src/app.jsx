@@ -213,7 +213,7 @@ function App() {
 
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'
   const title = view === 'home' ? greet + ', ' + (S.name.trim() || 'there') : view === 'settings' ? 'Settings' : (NAV.find((n) => n[0] === view) || NAV[0])[1]
-  const page = { home: <Slot c={P.Home} name="Home" goto={goto} openSheet={openSheet} />, wallets: <Slot c={P.Wallets} name="Wallets" openSheet={openSheet} />, history: <Slot c={P.TxHistory} name="TxHistory" openSheet={openSheet} />, pending: <Slot c={P.Pending} name="Pending" openSheet={openSheet} />, plan: <Slot c={P.Allocate} name="Allocate" />, goals: <Slot c={P.GoalsPage} name="GoalsPage" openSheet={openSheet} />, settings: <Slot c={P.Settings} name="Settings" openSheet={openSheet} /> }[view]
+  const page = { home: <Slot c={P.Home} name="Home" goto={goto} openSheet={openSheet} />, wallets: <Slot c={P.Wallets} name="Wallets" openSheet={openSheet} />, history: <Slot c={P.TxHistory} name="TxHistory" openSheet={openSheet} />, pending: <Slot c={P.Pending} name="Pending" openSheet={openSheet} />, plan: <Slot c={P.Allocate} name="Allocate" openSheet={openSheet} />, goals: <Slot c={P.GoalsPage} name="GoalsPage" openSheet={openSheet} />, settings: <Slot c={P.Settings} name="Settings" openSheet={openSheet} /> }[view]
 
   // Onboarding: shown once, only to a brand-new budget, and only after the cloud copy has been checked (so returning users never see a flash of it).
   const fresh = !S.tx.length && !S.debts.length && !S.goals.length && S.wallets.length <= 1 && S.wallets.every((w) => !+w.balance)
@@ -253,7 +253,7 @@ function App() {
 
       {/* Content. The top padding clears the notch / status bar plus a comfortable margin, so the header is never drawn under it. */}
       <main className="rail:ml-20 xl:ml-64 px-4 rail:px-6 xl:px-8 min-w-0 pb-36 rail:pb-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.75rem)' }}>
-        <header className="flex items-center justify-between gap-3 mb-5 rail:pt-2">
+        <header className="flex items-center justify-between gap-3 mb-4 rail:mb-5 rail:pt-2 mx-auto w-full max-w-[1100px]">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <button className="rail:hidden shrink-0 rounded-full active:scale-95 transition-transform" style={{ boxShadow: 'var(--e2)' }} aria-label="Profile and settings" onClick={() => goto('settings')}><Slot c={P.Avatar} name="Avatar" soft size={44} /></button>
             <div className="min-w-0 flex-1">
@@ -267,7 +267,7 @@ function App() {
             <button aria-label="Settings" title="Settings" onClick={() => goto('settings')} className={'btn btn-i ' + (view === 'settings' ? '!bg-ac/20 !text-ac !border-ac/30' : '')}><Slot c={P.Ic} name="Ic" soft n="gear" s={18} /></button>
           </div>
         </header>
-        <div ref={swipe} className="swipe-area">
+        <div ref={swipe} className="swipe-area mx-auto w-full max-w-[1100px]">
           <div key={view} className={'page-in' + (dir > 0 ? ' from-r' : dir < 0 ? ' from-l' : '')}>{page}</div>
         </div>
       </main>

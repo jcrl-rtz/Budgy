@@ -623,8 +623,8 @@ function Pending({ openSheet }) {
 }
 
 /* ---------- Allocate (Smart Plan) ---------- */
-function Allocate() {
-  const { S, c, setAlloc } = useApp()
+function Allocate({ openSheet }) {
+  const { S, c, setAlloc } = useApp(), [pick, setPick] = useState(false)
   const pays = S.debts.filter((d) => d.kind === 'payable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
   const recs = S.debts.filter((d) => d.kind === 'receivable' && rem(d) > 0).sort((a, b) => a.due.localeCompare(b.due))
   const room = (d) => Math.max(0, q(rem(d) - lockOf(d))), cur = (d) => Math.min(S.alloc['d:' + d.id] || 0, room(d)), short = (d) => q(rem(d) - lockOf(d) - cur(d)) // wallet locks (Allocate Funds on Pending) count first
@@ -642,7 +642,14 @@ function Allocate() {
         <div className={'text-3xl font-semibold tracking-tight mt-1 tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}><Num v={c.spendable} /></div>
         <div className="mt-3"><Bar lg pct={(c.allocated / Math.max(c.liquid, 1)) * 100} /></div>
         <div className="text-xs text-mu mt-2">{php(c.allocated)} of {php(c.liquid)} is locked{c.spendable < 0 ? '. Your allocations are higher than your cash.' : '.'}</div>
-        <div className="flex flex-wrap gap-2 mt-4"><button className="btn btn-p" onClick={smart} disabled={!pays.length}><Ic n="sparkle" s={16} />Smart Plan</button><button className="btn" onClick={clear} disabled={!pays.length}>Clear plan</button></div>
+        <div className="flex flex-wrap gap-2 mt-4"><button className="btn btn-p" onClick={smart} disabled={!pays.length}><Ic n="sparkle" s={16} />Smart Plan</button><button className="btn" onClick={clear} disabled={!pays.length}>Clear plan</button><button className="btn" onClick={() => (pays.length === 1 && openSheet ? openSheet({ k: 'alloc', item: pays[0] }) : setPick(!pick))} disabled={!pays.length || !openSheet} aria-expanded={pick}><Ic n="lock" s={16} />Allocate to Payable</button></div>
+      
+        {pick && (
+          <div className="mt-3 glass-tile p-2 space-y-1 fade" role="menu" aria-label="Choose a payable to allocate to">
+            <div className="text-[11px] text-mu px-2 pt-1">Choose a payable. It opens the same Allocate Funds sheet as Pending.</div>
+            {pays.map((d) => <button key={d.id} type="button" role="menuitem" className="w-full flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-left text-sm hover:bg-fg/5 active:bg-fg/10" onClick={() => { setPick(false); openSheet({ k: 'alloc', item: d }) }}><span className="min-w-0 truncate">{d.party}<span className="text-xs text-mu"> · {dueTxt(d.due)}</span></span><span className="tabular-nums text-xs text-mu whitespace-nowrap">{lockOf(d) > 0 ? php(lockOf(d)) + ' locked · ' : ''}{php(rem(d))} left</span></button>)}
+          </div>
+        )}
       </Glass>
 
       {urgent.length > 0 && (
@@ -663,7 +670,7 @@ function Allocate() {
               <div key={d.id}>
                 <div className="flex justify-between gap-3 text-sm"><span className="min-w-0 truncate">{d.party}<span className="text-xs text-mu"> · {d.cat} · {dueTxt(d.due)}</span></span><span className="tabular-nums whitespace-nowrap">{php(a)}</span></div>
                 <input type="range" min="0" max={mx} step="0.01" value={Math.min(a, mx)} aria-label={'Amount to allocate to ' + d.party} onChange={(e) => setAlloc({ ['d:' + d.id]: q(Math.min(+e.target.value, mx)) })} />
-                <div className="flex items-center justify-between gap-2 text-xs"><span className={s > 0 ? 'text-neg' : 'text-pos'}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}{lockOf(d) > 0 ? ' · ' + php(lockOf(d)) + ' locked in wallets' : ''}</span><button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></div>
+                <div className="flex items-center justify-between gap-2 text-xs"><span className={s > 0 ? 'text-neg' : 'text-pos'}>{s > 0 ? 'Short ' + php(s) + ' of ' + php(rem(d)) : 'Fully funded'}{lockOf(d) > 0 ? ' · ' + php(lockOf(d)) + ' locked in wallets' : ''}</span><span className="flex gap-1.5">{openSheet && <button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => openSheet({ k: 'alloc', item: d })}><Ic n="lock" s={12} />{lockOf(d) > 0 ? 'Edit lock' : 'Lock funds'}</button>}<button className="btn !py-1 !px-2.5 !text-[11px]" onClick={() => setAlloc({ ['d:' + d.id]: mx })}>Max</button></span></div>
               </div>
             )
           }) : <Empty t="No open payables to plan for." />}

@@ -69,7 +69,7 @@ function CardSettings({ onClose }) {
   )
 }
 
-function NetWorthCard({ onPin }) {
+function NetWorthCard({ onPin, aside }) {
   const { S, c } = useApp()
   const [hide, setHide] = useState(false), [edit, setEdit] = useState(false)
   const card = useRef(null), gear = useRef(null)
@@ -113,8 +113,8 @@ function NetWorthCard({ onPin }) {
   const total = parts.reduce((a, x) => a + x[1], 0) || 1
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,460px)_minmax(0,1fr)] gap-4 md:gap-5 items-center">
-      <div className="ncard-wrap rise">
+    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] gap-3 md:gap-4 md:items-stretch">
+      <div className="ncard-wrap rise self-start md:self-center">
         <div ref={card} className={'ncard' + (shown ? ' has-stats' : '')} onPointerMove={move} onPointerLeave={leave} onPointerCancel={leave} role="group" aria-label={'Net worth card. ' + (hide ? 'Amounts hidden.' : 'Net worth ' + php(c.net))}>
           <i className="nc-guil" /><i className="nc-ring" /><i className="nc-holo" /><i className="nc-grain" /><i className="nc-stitch" /><i className="nc-sheen" /><i className="nc-glare" />
           <div className="nc-body">
@@ -176,24 +176,30 @@ function NetWorthCard({ onPin }) {
         </div>
       </div>
 
-      <Glass i={1} className="p-3.5 sm:p-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="font-semibold text-[15px]">Statement</div>
-          <div className="text-[11px] text-mu truncate">Cash + receivables − payables</div>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 mt-1.5">
-          <span className="text-xs text-mu">Spendable</span>
-          <span className={'text-xl font-semibold tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}>{mask(c.spendable)}</span>
-        </div>
-        <div className="mt-2.5">
-          <div className="nc-bar" role="img" aria-label="Share of cash, receivables and payables">
-            {parts.map(([n, v, col]) => <i key={n} style={{ width: (v / total) * 100 + '%', background: col }} />)}
+      <div className="flex flex-col gap-3 md:gap-4 min-w-0">
+        <Glass i={1} className="p-3.5 sm:p-4 md:p-4 lg:p-5 md:flex-1 md:flex md:flex-col md:justify-center">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="font-semibold text-[15px]">Statement</div>
+            <div className="text-[11px] text-mu truncate">Cash + receivables − payables</div>
           </div>
-          <div className="flex flex-wrap gap-x-3.5 gap-y-0.5 mt-1.5 text-[11px] text-mu">
-            {parts.map(([n, v, col]) => <span key={n} className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full inline-block" style={{ background: col }} />{n} {Math.round((v / total) * 100)}%</span>)}
+          <div className="flex items-baseline justify-between gap-3 mt-1.5 md:mt-3">
+            <span className="text-xs text-mu">Spendable</span>
+            <span className={'text-xl md:text-2xl font-semibold tabular-nums ' + (c.spendable < 0 ? 'text-neg' : '')}>{mask(c.spendable)}</span>
           </div>
-        </div>
-      </Glass>
+          <div className="mt-2.5 md:mt-4">
+            <div className="nc-bar" role="img" aria-label="Share of cash, receivables and payables">
+              {parts.map(([n, v, col]) => <i key={n} style={{ width: (v / total) * 100 + '%', background: col }} />)}
+            </div>
+            <div className="flex flex-wrap gap-x-3.5 gap-y-0.5 mt-1.5 text-[11px] text-mu md:hidden">
+              {parts.map(([n, v, col]) => <span key={n} className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full inline-block" style={{ background: col }} />{n} {Math.round((v / total) * 100)}%</span>)}
+            </div>
+            <div className="hidden md:grid grid-cols-3 gap-3 mt-3">
+              {parts.map(([n, v, col]) => <div key={n} className="min-w-0"><div className="flex items-center gap-1.5 text-[11px] text-mu"><i className="w-2 h-2 rounded-full inline-block shrink-0" style={{ background: col }} /><span className="truncate">{n} {Math.round((v / total) * 100)}%</span></div><div className="mt-0.5 text-sm font-semibold tabular-nums truncate">{mask(v)}</div></div>)}
+            </div>
+          </div>
+        </Glass>
+        {aside}
+      </div>
       {edit && ReactDOM.createPortal(<CardSettings onClose={closeEdit} />, document.body)}
     </div>
   )
@@ -263,8 +269,18 @@ function Home({ goto, openSheet }) {
   const small = HOME_KEYS.filter((k) => k !== pin && !(empty && ['allocated', 'projected', 'pending'].includes(k)))
   const goItem = (k) => (HOME_DEFS[k].go ? [{ label: HOME_DEFS[k].go[0], icon: 'right', onClick: () => goto(HOME_DEFS[k].go[1]) }] : [])
 
+  const qa = (cls) => (
+    <div className={'grid grid-cols-3 gap-2 ' + cls}>
+      {actions.map(([l, ic, kind]) => (
+        <button key={kind} className="glass qa transition-transform duration-200 active:scale-95" style={{ borderRadius: '1.1rem' }} onClick={() => openSheet({ k: 'tx', kind })} aria-label={'Add ' + l.toLowerCase()}>
+          <span className="qa-i"><Ic n={ic} s={14} /></span><span>{l}</span>
+        </button>
+      ))}
+    </div>
+  )
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 md:space-y-4">
       {empty && (
         <Glass className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4" style={{ borderColor: 'rgb(var(--a) / .35)' }}>
           <span className="hidden sm:grid place-items-center w-11 h-11 rounded-2xl bg-ac/15 text-ac shrink-0"><Ic n="sparkle" s={20} /></span>
@@ -275,7 +291,7 @@ function Home({ goto, openSheet }) {
 
       {/* Pinned card (large). Net worth keeps its credit-card look; every other metric gets a big summary card. */}
       {pin === 'net' ? (
-        <NetWorthCard onPin={() => setPinOpen(true)} />
+        <NetWorthCard onPin={() => setPinOpen(true)} aside={qa('hidden md:grid')} />
       ) : (
         <Glass i={0} className="p-5 sm:p-6" style={{ background: 'linear-gradient(135deg, rgb(var(--a) / .24), rgb(var(--s1) / .5) 72%)', borderColor: 'rgb(var(--a) / .32)' }}>
           <div className="flex items-start justify-between gap-3">
@@ -295,23 +311,17 @@ function Home({ goto, openSheet }) {
         </Glass>
       )}
 
-      {/* Quick actions: always three across, never truncated */}
-      <div className="grid grid-cols-3 gap-2">
-        {actions.map(([l, ic, kind]) => (
-          <button key={kind} className="glass qa transition-transform duration-200 active:scale-95" style={{ borderRadius: '1.1rem' }} onClick={() => openSheet({ k: 'tx', kind })} aria-label={'Add ' + l.toLowerCase()}>
-            <span className="qa-i"><Ic n={ic} s={14} /></span><span>{l}</span>
-          </button>
-        ))}
-      </div>
+      {/* Quick actions: always three across, never truncated. With the Net worth card on md+ they sit in its right column instead. */}
+      {qa(pin === 'net' ? 'md:hidden' : '')}
 
       {/* Small summary cards: everything that is not pinned. Two across on phones, four across on wide screens. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 max-md:[&>*:last-child:nth-child(odd)]:col-span-2">
         {small.map((k, i) => {
           const v = homeValue(k, c), d = HOME_DEFS[k]
           return (
-            <Glass key={k} i={i + 1} className="p-3 sm:p-3.5">
+            <Glass key={k} i={i + 1} className="p-3 sm:p-3.5 md:p-3">
               <div className="flex items-start justify-between gap-1">
-                <div className="min-w-0"><div className="text-[11px] text-mu leading-snug">{k === 'spent' ? 'Spent in ' + c.monthName : d.name}</div><div className={'mt-1 text-[15px] min-[400px]:text-base sm:text-lg font-semibold tracking-tight tabular-nums leading-tight break-words ' + homeTone(k, v)}>{homeText(k, v)}</div></div>
+                <div className="min-w-0"><div className="text-[11px] text-mu leading-snug">{k === 'spent' ? 'Spent in ' + c.monthName : d.name}</div><div className={'mt-1 text-[15px] min-[400px]:text-base sm:text-lg md:max-lg:text-base font-semibold tracking-tight tabular-nums leading-tight break-words ' + homeTone(k, v)}>{homeText(k, v)}</div></div>
                 <div className="-mr-1.5 -mt-1.5 shrink-0"><OptionsMenu label={'Options for ' + d.name} items={[{ label: 'Pin to top', icon: 'pin', onClick: () => set({ homePin: k }) }, ...goItem(k)]} /></div>
               </div>
               <div className="text-[11px] text-mu mt-0.5 leading-snug">{d.hint}</div>
